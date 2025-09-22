@@ -8,7 +8,7 @@ client = Groq(api_key="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"
 st.set_page_config(page_title="Chatbot Cô Hương", page_icon="👩‍🏫", layout="centered")
 
 st.title("👩‍🏫 Chatbot Cô Hương")
-st.markdown("Xin chào các em! Cô là **Hương**, giáo viên Tin học. "
+st.write("Xin chào các em! Cô là **Hương**, giáo viên Tin học. "
             "Các em có thắc mắc gì về **phòng chống lừa đảo trên mạng** thì hãy hỏi cô nhé.")
 
 # Lưu lịch sử hội thoại
@@ -30,14 +30,14 @@ if "messages" not in st.session_state:
 # Hiển thị hội thoại cũ
 for msg in st.session_state.messages[1:]:
     if msg["role"] == "user":
-        st.chat_message("user").markdown(f"👦 **Học sinh**: {msg['content']}")
+        st.chat_message("user").write(f"👦 **Học sinh**: {msg['content']}")
     else:
-        st.chat_message("assistant").markdown(f"👩‍🏫 **Cô Hương**: {msg['content']}")
+        st.chat_message("assistant").write(f"👩‍🏫 **Cô Hương**: {msg['content']}")
 
 # Ô nhập câu hỏi
 if prompt := st.chat_input("Nhập câu hỏi của em..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
-    st.chat_message("user").markdown(f"👦 **Học sinh**: {prompt}")
+    st.chat_message("user").write(f"👦 **Học sinh**: {prompt}")
 
     # Tạo container để stream nội dung
     with st.chat_message("assistant"):
@@ -58,10 +58,10 @@ if prompt := st.chat_input("Nhập câu hỏi của em..."):
         for chunk in stream:
             if chunk.choices[0].delta.content:
                 full_reply += chunk.choices[0].delta.content
-                placeholder.markdown(f"👩‍🏫 **Cô Hương**: {full_reply}▌")  # hiệu ứng đang gõ
+                placeholder.write(f"👩‍🏫 **Cô Hương**: {full_reply}▌")  # hiệu ứng đang gõ
 
         # Xóa ký hiệu gõ ▌ sau khi xong
-        placeholder.markdown(f"👩‍🏫 **Cô Hương**: {full_reply}")
+        placeholder.write(f"👩‍🏫 **Cô Hương**: {full_reply}")
 
     # Lưu câu trả lời
     st.session_state.messages.append({"role": "assistant", "content": full_reply})
