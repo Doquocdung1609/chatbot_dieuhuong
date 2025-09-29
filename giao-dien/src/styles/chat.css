@@ -176,7 +176,7 @@
   position: fixed;
   top: 0;
   left: var(--sidebar-width);
-  width: calc(100vw - var(--sidebar-width));
+  width: calc(97vw - var(--sidebar-width));
   height: var(--header-height);
   display: flex;
   align-items: center;
@@ -303,4 +303,20 @@ button.refresh {
 }
 button.refresh:hover {
   background-color: #6b7280;
+}
+
+.back-btn {
+  margin-left: auto;
+  padding: 6px 14px;
+  background: #e0e7ff;
+  border: none;
+  border-radius: 8px;
+  color: #1e40af;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.back-btn:hover {
+  background: #c7d2fe;
 }

@@ -54,29 +54,31 @@ const Chat = ({ mode, userId, token, currentSession, setCurrentSession, aiEnable
         console.error('WebSocket message parsing error:', err);
       }
     };
-    ws.current.onclose = (event) => {
-      if (event.code === 1008) {
-        navigate('/login');
-        return;
-      }
-      if (reconnectAttempts.current < maxReconnectAttempts) {
-        setTimeout(() => {
-          reconnectAttempts.current += 1;
-          connectWebSocket();
-        }, 1000 * (reconnectAttempts.current + 1));
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          {
-            session_id: currentSession,
-            role: 'assistant',
-            content: 'Không thể kết nối với server. Vui lòng thử lại sau. 😔',
-            timestamp: new Date().toISOString(),
-            rendered: marked.parse('Không thể kết nối với server. Vui lòng thử lại sau. 😔'),
-          },
-        ]);
-      }
-    };
+ws.current.onclose = (event) => {
+  // Nếu socket bị đóng do logout thật sự thì mới logout
+  if (event.code === 1008 && mode === 'Học sinh') {
+    navigate('/login');
+    return;
+  }
+
+  if (reconnectAttempts.current < maxReconnectAttempts) {
+    setTimeout(() => {
+      reconnectAttempts.current += 1;
+      connectWebSocket();
+    }, 1000 * (reconnectAttempts.current + 1));
+  } else {
+    setMessages((prev) => [
+      ...prev,
+      {
+        session_id: currentSession,
+        role: 'assistant',
+        content: 'Không thể kết nối với server. Vui lòng thử lại sau. 😔',
+        timestamp: new Date().toISOString(),
+        rendered: marked.parse('Không thể kết nối với server. Vui lòng thử lại sau. 😔'),
+      },
+    ]);
+  }
+};
     ws.current.onerror = (err) => {
       console.error(`WebSocket error for session_id: ${currentSession}`, err);
       ws.current.close();
@@ -223,7 +225,26 @@ setTimeout(async () => {
     <div className="main">
       <div className="chat-container">
         <div className="chat-header">
-          {mode === 'Học sinh' ? 'Chatbot Cô Hương - Chế độ Học sinh' : 'Chat - Giáo viên'}
+          {mode === 'Giáo viên' && (
+  <button
+  className="back-btn"
+  onClick={() => {
+    try {
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+        ws.current.onclose = null; // ✅ Ngăn không cho gọi navigate('/login') trong onclose
+        ws.current.close();
+      }
+    } catch (e) {
+      console.warn("WebSocket close error:", e);
+    }
+    navigate('/teacher', { replace: true }); // ✅ Không logout, chỉ quay về dashboard
+  }}
+>
+  ⬅ Quay lại
+</button>
+
+)}
+
         </div>
         <div className="chat-window">
           {isLoading ? (
