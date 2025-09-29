@@ -15,11 +15,11 @@ function App() {
   const [currentSession, setCurrentSession] = useState(null);
 
   const handleLogin = (id, selectedMode, authToken) => {
-  console.log('handleLogin called with:', { id, selectedMode, authToken });
-  setUserId(id);
-  setMode(selectedMode);
-  setToken(authToken);
-};
+    console.log('handleLogin called with:', { id, selectedMode, authToken });
+    setUserId(id);
+    setMode(selectedMode);
+    setToken(authToken);
+  };
 
   const handleLogout = () => {
     setUserId(null);
@@ -101,23 +101,23 @@ function AppContent({
           />
 
           <Route
-  path="/teacher"
-  element={
-    userId && token && mode === 'Giáo viên' ? (
-      <TeacherDashboard
-        userId={userId}
-        token={token}
-        aiEnabled={aiEnabled}
-        setAiEnabled={setAiEnabled}
-        currentSession={currentSession}
-        setCurrentSession={setCurrentSession}
-        handleLogout={handleLogout}
-      />
-    ) : (
-      <Navigate to="/login" />
-    )
-  }
-/>
+            path="/teacher"
+            element={
+              userId && token && mode === 'Giáo viên' ? (
+                <TeacherDashboard
+                  userId={userId}
+                  token={token}
+                  aiEnabled={aiEnabled}
+                  setAiEnabled={setAiEnabled}
+                  currentSession={currentSession}
+                  setCurrentSession={setCurrentSession}
+                  handleLogout={handleLogout}
+                />
+              ) : (
+                <Navigate to="/login" />
+              )
+            }
+          />
 
           {/* Mặc định điều hướng về login */}
           <Route path="*" element={<Navigate to="/login" />} />

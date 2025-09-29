@@ -53,6 +53,14 @@ cursor.execute('DROP TABLE IF EXISTS conversations')
 cursor.execute('DROP TABLE IF EXISTS chat_sessions')
 cursor.execute('DROP TABLE IF EXISTS students')
 cursor.execute('''
+CREATE TABLE IF NOT EXISTS teachers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE,
+    password TEXT NOT NULL
+)
+''')
+
+cursor.execute('''
 CREATE TABLE IF NOT EXISTS students (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE,
@@ -95,6 +103,8 @@ CREATE TABLE IF NOT EXISTS tokens (
     FOREIGN KEY (user_id) REFERENCES students(id)
 )
 ''')
+cursor.execute("INSERT OR IGNORE INTO teachers (username, password) VALUES (?, ?)", 
+               ("teacher", "123456"))
 conn.commit()
 
 connected_clients = {}  # {session_id: {user_id: [websocket]}}
@@ -204,15 +214,20 @@ async def student_login(student: StudentLogin):
     raise HTTPException(status_code=401, detail="Invalid username or password")
 
 @app.post("/teacher_login")
-async def teacher_login(creds: TeacherLogin):
-    if creds.username == "teacher" and creds.password == "123456":
-        user_id = 0
+async def teacher_login(teacher: TeacherLogin):
+    cursor.execute("SELECT id FROM teachers WHERE username = ? AND password = ?", 
+                  (teacher.username, teacher.password))
+    result = cursor.fetchone()
+    if result:
+        user_id = result[0]
         token, expires_at = create_access_token({"sub": str(user_id), "type": "teacher"})
         cursor.execute("INSERT INTO tokens (user_id, user_type, token, expires_at) VALUES (?, ?, ?, ?)",
                       (user_id, "teacher", token, expires_at))
         conn.commit()
         return {"id": user_id, "token": token}
-    raise HTTPException(status_code=401, detail="Invalid credentials")
+    else:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
 
 @app.get("/sessions/{student_id}")
 async def get_sessions(student_id: int, token: str):
