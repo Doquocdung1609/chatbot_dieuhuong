@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, Navigate, useLocation, useParams } from 'react-router-dom';
 import Login from './components/Login';
 import Register from './components/Register';
 import Chat from './components/Chat';
@@ -119,6 +119,22 @@ function AppContent({
             }
           />
 
+          <Route
+  path="/teacher/chat/:studentId"
+  element={
+    userId && token && mode === "Giáo viên" ? (
+      <TeacherChatWrapper
+        token={token}
+        aiEnabled={aiEnabled}
+        currentSession={currentSession}
+        setCurrentSession={setCurrentSession}
+      />
+    ) : (
+      <Navigate to="/login" />
+    )
+  }
+/>
+
           {/* Mặc định điều hướng về login */}
           <Route path="*" element={<Navigate to="/login" />} />
         </Routes>
@@ -128,3 +144,20 @@ function AppContent({
 }
 
 export default App;
+
+function TeacherChatWrapper({ token, aiEnabled, currentSession, setCurrentSession }) {
+  const { studentId } = useParams();
+  const location = useLocation();
+  const sessionId = location.state?.sessionId || currentSession;
+
+  return (
+    <Chat
+      mode="Giáo viên"
+      userId={parseInt(studentId)}   // ✅ studentId chứ không phải teacherId
+      token={token}
+      aiEnabled={aiEnabled}
+      currentSession={sessionId}
+      setCurrentSession={setCurrentSession}
+    />
+  );
+}

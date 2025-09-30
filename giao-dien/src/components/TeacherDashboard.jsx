@@ -10,6 +10,8 @@ import {
 import Chat from './Chat';
 import '../styles/teacher-dashboard.css';
 import { FiRefreshCcw, FiFilter, FiMessageCircle } from 'react-icons/fi';
+import { useNavigate } from "react-router-dom";
+
 
 const TeacherDashboard = ({ aiEnabled, setAiEnabled, token }) => {
   const [students, setStudents] = useState([]);
@@ -17,6 +19,8 @@ const TeacherDashboard = ({ aiEnabled, setAiEnabled, token }) => {
   const [view, setView] = useState('home');
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [currentSession, setCurrentSession] = useState(null);
+  const navigate = useNavigate();
+
 
   useEffect(() => {
     if (token) {
@@ -54,46 +58,52 @@ const TeacherDashboard = ({ aiEnabled, setAiEnabled, token }) => {
       s.gvcn.toLowerCase().includes(filters.gvcn.toLowerCase())
   );
 
-  const handleReply = async (studentId) => {
-    try {
-      setSelectedStudent(studentId);
-      const sessionsRes = await getSessions(studentId, token);
-      const sessions = sessionsRes.data;
+const handleReply = async (studentId) => {
+  try {
+    setSelectedStudent(studentId);
+    const sessionsRes = await getSessions(studentId, token);
+    const sessions = sessionsRes.data;
 
-      if (sessions.length > 0) {
-        let latestSessionId = sessions[0].id;
-        let latestMessageTime = null;
+    let sessionIdToUse = null;
 
-        for (const session of sessions) {
-          const conversationsRes = await getConversations(session.id, token);
-          const messages = conversationsRes.data;
-          if (messages.length > 0) {
-            const latestMessage = messages[messages.length - 1];
-            if (!latestMessageTime || latestMessage.timestamp > latestMessageTime) {
-              latestMessageTime = latestMessage.timestamp;
-              latestSessionId = session.id;
-            }
+    if (sessions.length > 0) {
+      // Lấy session mới nhất theo thời gian tin nhắn
+      sessionIdToUse = sessions[0].id;
+      let latestMessageTime = null;
+
+      for (const session of sessions) {
+        const conversationsRes = await getConversations(session.id, token);
+        const messages = conversationsRes.data;
+        if (messages.length > 0) {
+          const latestMessage = messages[messages.length - 1];
+          if (!latestMessageTime || latestMessage.timestamp > latestMessageTime) {
+            latestMessageTime = latestMessage.timestamp;
+            sessionIdToUse = session.id;
           }
         }
-
-        setCurrentSession(latestSessionId);
-        setView('chat');
-      } else {
-        const newSessionRes = await createSession(
-          { student_id: studentId, title: `Chat ${new Date().toISOString()}` },
-          token
-        );
-        setCurrentSession(newSessionRes.data.id);
-        setView('chat');
       }
-    } catch (err) {
-      if (err.response?.status === 401) {
-        window.location.href = '/login';
-      } else {
-        alert(`Không thể mở phiên chat: ${err.message}`);
-      }
+    } else {
+      // Tạo session mới
+      const newSessionRes = await createSession(
+        { student_id: studentId, title: `Chat ${new Date().toISOString()}` },
+        token
+      );
+      sessionIdToUse = newSessionRes.data.id;
     }
-  };
+
+    // Cập nhật state và điều hướng
+    setCurrentSession(sessionIdToUse);
+    setView('chat');
+    navigate(`/teacher/chat/${studentId}`, { state: { sessionId: sessionIdToUse } });
+  } catch (err) {
+    if (err.response?.status === 401) {
+      window.location.href = '/login';
+    } else {
+      alert(`Không thể mở phiên chat: ${err.message}`);
+    }
+  }
+};
+
 
   if (view === 'chat') {
     return (

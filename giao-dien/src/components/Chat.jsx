@@ -138,7 +138,9 @@ ws.current.onclose = (event) => {
     try {
       await addMessage(message, token);
       ws.current.send(JSON.stringify(message));
-      setMessages((prev) => [...prev, { ...message, rendered: marked.parse(message.content) }]);
+      if (mode === "Học sinh") {
+  setMessages((prev) => [...prev, { ...message, rendered: marked.parse(message.content) }]);
+}
 
       if (mode === 'Học sinh' && aiEnabled) {
         setIsAiResponding(true); // Hiển thị loading
