@@ -48,7 +48,8 @@ export const sendToAI = (data, token) => {
 
 export const getTeacher = (teacherId, token) => api.get(`/teacher/${teacherId}`, { params: { token } });
 
-export const markRead = (sessionId, token) => api.post(`/mark_read/${sessionId}`, { token });
+export const markRead = (sessionId, token) =>
+  api.post(`/mark_read/${sessionId}`, null, { params: { token } });
 
 export const getUnread = (studentId, token) => api.get(`/unread/${studentId}`, { params: { token } });
 

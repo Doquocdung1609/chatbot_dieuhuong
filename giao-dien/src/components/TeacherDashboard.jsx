@@ -5,12 +5,26 @@ import {
   getLastMessage,
   createSession,
   getSessions,
-  getConversations
+  getConversations,
+  markRead   
 } from '../services/api';
 import Chat from './Chat';
 import '../styles/teacher-dashboard.css';
 import { FiRefreshCcw, FiFilter, FiMessageCircle } from 'react-icons/fi';
 import { useNavigate } from "react-router-dom";
+
+const formatDate = (isoString) => {
+  if (!isoString) return '—';
+  const date = new Date(isoString);
+  return date.toLocaleString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).replace(',', '');
+};
+
 
 
 const TeacherDashboard = ({ aiEnabled, setAiEnabled, token }) => {
@@ -21,30 +35,30 @@ const TeacherDashboard = ({ aiEnabled, setAiEnabled, token }) => {
   const [currentSession, setCurrentSession] = useState(null);
   const navigate = useNavigate();
 
+  const fetchStudents = async () => {
+    if (!token) return;
+    try {
+      const res = await getStudents(token);
+      const updated = await Promise.all(
+        res.data.map(async (s) => {
+          const unread = await getUnread(s.id, token);
+          const last = await getLastMessage(s.id, token);
+          return {
+            ...s,
+            unread: unread.data.unread ? 'Chưa đọc' : 'Đã đọc',
+            last_time: last.data.last_time,
+          };
+        })
+      );
+      setStudents(updated);
+    } catch (err) {
+      if (err.response?.status === 401) window.location.href = '/login';
+    }
+  };
+
 
   useEffect(() => {
-    if (token) {
-      getStudents(token)
-        .then(async (res) => {
-          const updated = await Promise.all(
-            res.data.map(async (s) => {
-              const unread = await getUnread(s.id, token);
-              const last = await getLastMessage(s.id, token);
-              return {
-                ...s,
-                unread: unread.data.unread ? 'Chưa đọc' : 'Đã đọc',
-                last_time: last.data.last_time,
-              };
-            })
-          );
-          setStudents(updated);
-        })
-        .catch((err) => {
-          if (err.response?.status === 401) {
-            window.location.href = '/login';
-          }
-        });
-    }
+    fetchStudents();
   }, [token]);
 
   const handleFilter = (e) => {
@@ -65,9 +79,7 @@ const handleReply = async (studentId) => {
     const sessions = sessionsRes.data;
 
     let sessionIdToUse = null;
-
     if (sessions.length > 0) {
-      // Lấy session mới nhất theo thời gian tin nhắn
       sessionIdToUse = sessions[0].id;
       let latestMessageTime = null;
 
@@ -83,7 +95,6 @@ const handleReply = async (studentId) => {
         }
       }
     } else {
-      // Tạo session mới
       const newSessionRes = await createSession(
         { student_id: studentId, title: `Chat ${new Date().toISOString()}` },
         token
@@ -91,7 +102,9 @@ const handleReply = async (studentId) => {
       sessionIdToUse = newSessionRes.data.id;
     }
 
-    // Cập nhật state và điều hướng
+    // ✅ Đánh dấu là đã đọc khi giáo viên mở chat
+    await markRead(sessionIdToUse, token);
+
     setCurrentSession(sessionIdToUse);
     setView('chat');
     navigate(`/teacher/chat/${studentId}`, { state: { sessionId: sessionIdToUse } });
@@ -131,7 +144,7 @@ const handleReply = async (studentId) => {
             />
             <span>Bật AI</span>
           </label>
-          <button className="refresh-btn" onClick={() => window.location.reload()}>
+          <button className="refresh-btn" onClick={fetchStudents}>
             <FiRefreshCcw size={18} /> Làm mới
           </button>
         </div>
@@ -179,7 +192,7 @@ const handleReply = async (studentId) => {
                 <td>{s.name}</td>
                 <td>{s.class}</td>
                 <td>{s.gvcn}</td>
-                <td>{s.last_time}</td>
+                <td>{formatDate(s.last_time)}</td>
                 <td>
                   <span className={`status ${s.unread === 'Chưa đọc' ? 'unread' : 'read'}`}>
                     {s.unread}

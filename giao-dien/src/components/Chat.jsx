@@ -252,21 +252,22 @@ const Chat = ({ mode, userId, token, currentSession, setCurrentSession, aiEnable
           )}
           {mode === 'Giáo viên' && (
             <button
-              className="back-btn"
-              onClick={() => {
-                try {
-                  if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-                    ws.current.onclose = null;
-                    ws.current.close();
-                  }
-                } catch (e) {
-                  console.warn("WebSocket close error:", e);
-                }
-                navigate('/teacher', { replace: true });
-              }}
-            >
-              ⬅ Quay lại
-            </button>
+  className="back-btn"
+  onClick={() => {
+    try {
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+        ws.current.onclose = null;
+        ws.current.close();
+      }
+    } catch (e) {
+      console.warn("WebSocket close error:", e);
+    }
+    navigate('/teacher', { replace: true });
+  }}
+>
+  ⬅ Quay lại
+</button>
+
           )}
         </div>
         <div className="chat-window">
