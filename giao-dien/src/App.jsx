@@ -149,16 +149,42 @@ export default App;
 function TeacherChatWrapper({ token, aiEnabled, currentSession, setCurrentSession }) {
   const { studentId } = useParams();
   const location = useLocation();
-  const sessionId = location.state?.sessionId || currentSession;
+  const [sessionId, setSessionId] = useState(location.state?.sessionId || currentSession);
+
+  useEffect(() => {
+    if (location.state?.sessionId && location.state.sessionId !== sessionId) {
+      setSessionId(location.state.sessionId);
+      setCurrentSession(location.state.sessionId);
+    }
+  }, [location.state?.sessionId]);
+
+  useEffect(() => {
+    if (currentSession && currentSession !== sessionId) {
+      setSessionId(currentSession);
+    }
+  }, [currentSession]);
 
   return (
-    <Chat
-      mode="Giáo viên"
-      userId={parseInt(studentId)}   // ✅ studentId chứ không phải teacherId
-      token={token}
-      aiEnabled={aiEnabled}
-      currentSession={sessionId}
-      setCurrentSession={setCurrentSession}
-    />
+    <div className="flex w-full">
+      <Sidebar
+        studentId={studentId}
+        token={token}
+        currentSession={sessionId}
+        setCurrentSession={setCurrentSession}
+        isTeacher={true}
+      />
+
+      <div className="flex-1">
+        <Chat
+          mode="Giáo viên"
+          userId={parseInt(studentId)}
+          token={token}
+          aiEnabled={aiEnabled}
+          currentSession={sessionId}
+          setCurrentSession={setCurrentSession}
+        />
+      </div>
+    </div>
   );
 }
+

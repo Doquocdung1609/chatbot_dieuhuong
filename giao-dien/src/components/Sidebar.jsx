@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { getSessions, createSession } from '../services/api';
 import { ChevronLeft, ChevronRight, PlusCircle, LogOut, MessageSquare } from 'lucide-react';
 import '../styles/chat.css';
+import { useLocation } from 'react-router-dom';
 
 const Sidebar = ({
   studentId,
@@ -16,17 +17,17 @@ const Sidebar = ({
   const [collapsed, setCollapsed] = useState(false);
   const hasFetched = useRef(false);
   const hasCreatedInitialSession = useRef(false);
+  const location = useLocation();
+
+  const isTeacherChatPage = location.pathname.startsWith('/teacher/chat');
 
   useEffect(() => {
-    if (token && !hasFetched.current) {
-      hasFetched.current = true;
-      if (isTeacher) {
-        console.log('Teacher logged in → skip fetching student sessions');
-        return;
-      }
-      if (studentId) fetchSessions();
-    }
-  }, [studentId, token, isTeacher]);
+  if (token && studentId && !hasFetched.current) {
+    hasFetched.current = true;
+    fetchSessions();  // ✅ luôn gọi cho cả giáo viên và học sinh
+  }
+}, [studentId, token]);
+
 
   const fetchSessions = async () => {
     try {
@@ -86,14 +87,17 @@ const Sidebar = ({
             </button>
           )}
 
-          {!isTeacher && (
+            {(!isTeacher || isTeacherChatPage) && (
             <div className="session-section">
-              <h4 className="section-title">Lịch sử trò chuyện</h4>
+              <h4 className="section-title">
+                {isTeacher ? 'Phiên chat của học sinh' : 'Lịch sử trò chuyện'}
+              </h4>
 
-              <button className="create-session-btn" onClick={createNewSession}>
-                <PlusCircle size={18} />
-                <span>Tạo chat mới</span>
-              </button>
+              {!isTeacher && (
+                <button className="create-session-btn" onClick={createNewSession}>
+                  <span>Tạo chat mới</span>
+                </button>
+              )}
 
               <div className="session-list">
                 {sessions.length === 0 ? (
