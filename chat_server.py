@@ -227,6 +227,17 @@ async def teacher_login(teacher: TeacherLogin):
         return {"id": user_id, "token": token}
     else:
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+@app.get("/teacher/{teacher_id}")
+async def get_teacher(teacher_id: int, token: str):
+    user = verify_token(token)
+    if not user or (user["user_type"] == "teacher" and user["user_id"] != teacher_id):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    cursor.execute("SELECT id, username FROM teachers WHERE id = ?", (teacher_id,))
+    teacher = cursor.fetchone()
+    if teacher:
+        return {"id": teacher[0], "username": teacher[1]}
+    raise HTTPException(status_code=404, detail="Teacher not found")
 
 
 @app.get("/sessions/{student_id}")

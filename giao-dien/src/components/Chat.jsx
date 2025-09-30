@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getConversations, addMessage, sendToAI } from '../services/api';
+import { getConversations, addMessage, sendToAI, getStudent, getTeacher } from '../services/api';
 import '../styles/chat.css';
 import { marked } from 'marked';
 
@@ -8,12 +8,32 @@ const Chat = ({ mode, userId, token, currentSession, setCurrentSession, aiEnable
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isAiResponding, setIsAiResponding] = useState(false); // Thêm state cho AI loading
+  const [isAiResponding, setIsAiResponding] = useState(false);
+  const [userInfo, setUserInfo] = useState(null); // State lưu thông tin người dùng
   const ws = useRef(null);
   const reconnectAttempts = useRef(0);
   const maxReconnectAttempts = 5;
   const navigate = useNavigate();
   const sessionRef = useRef(currentSession);
+
+  // Lấy thông tin người dùng khi component mount
+  useEffect(() => {
+    const fetchUserInfo = async () => {
+      try {
+        if (mode === 'Học sinh') {
+          const response = await getStudent(userId, token);
+          setUserInfo(response.data);
+        } else {
+          const response = await getTeacher(userId, token);
+          setUserInfo(response.data);
+        }
+      } catch (err) {
+        console.error('Error fetching user info:', err);
+        if (err.response?.status === 401) navigate('/login');
+      }
+    };
+    if (userId && token) fetchUserInfo();
+  }, [userId, token, mode, navigate]);
 
   const connectWebSocket = () => {
     if (!currentSession || !token) {
@@ -32,11 +52,10 @@ const Chat = ({ mode, userId, token, currentSession, setCurrentSession, aiEnable
     ws.current.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        console.log('WebSocket received:', data); // Debug log
+        console.log('WebSocket received:', data);
         if (data.type === 'ping') return;
         if (data.session_id !== currentSession) return;
 
-        // Chỉ xử lý tin nhắn user/teacher
         if (data.role === 'user' || data.role === 'teacher') {
           setMessages((prev) => {
             if (prev.some(msg => msg.timestamp === data.timestamp && msg.content === data.content)) return prev;
@@ -48,37 +67,35 @@ const Chat = ({ mode, userId, token, currentSession, setCurrentSession, aiEnable
             }];
           });
         } else {
-          console.log('Ignoring assistant message from WebSocket:', data.content); // Debug log
+          console.log('Ignoring assistant message from WebSocket:', data.content);
         }
       } catch (err) {
         console.error('WebSocket message parsing error:', err);
       }
     };
-ws.current.onclose = (event) => {
-  // Nếu socket bị đóng do logout thật sự thì mới logout
-  if (event.code === 1008 && mode === 'Học sinh') {
-    navigate('/login');
-    return;
-  }
-
-  if (reconnectAttempts.current < maxReconnectAttempts) {
-    setTimeout(() => {
-      reconnectAttempts.current += 1;
-      connectWebSocket();
-    }, 1000 * (reconnectAttempts.current + 1));
-  } else {
-    setMessages((prev) => [
-      ...prev,
-      {
-        session_id: currentSession,
-        role: 'assistant',
-        content: 'Không thể kết nối với server. Vui lòng thử lại sau. 😔',
-        timestamp: new Date().toISOString(),
-        rendered: marked.parse('Không thể kết nối với server. Vui lòng thử lại sau. 😔'),
-      },
-    ]);
-  }
-};
+    ws.current.onclose = (event) => {
+      if (event.code === 1008 && mode === 'Học sinh') {
+        navigate('/login');
+        return;
+      }
+      if (reconnectAttempts.current < maxReconnectAttempts) {
+        setTimeout(() => {
+          reconnectAttempts.current += 1;
+          connectWebSocket();
+        }, 1000 * (reconnectAttempts.current + 1));
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          {
+            session_id: currentSession,
+            role: 'assistant',
+            content: 'Không thể kết nối với server. Vui lòng thử lại sau. 😔',
+            timestamp: new Date().toISOString(),
+            rendered: marked.parse('Không thể kết nối với server. Vui lòng thử lại sau. 😔'),
+          },
+        ]);
+      }
+    };
     ws.current.onerror = (err) => {
       console.error(`WebSocket error for session_id: ${currentSession}`, err);
       ws.current.close();
@@ -121,7 +138,7 @@ ws.current.onclose = (event) => {
   marked.setOptions({
     breaks: true,
     gfm: true,
-    renderer: new marked.Renderer(), // Đảm bảo renderer chuẩn
+    renderer: new marked.Renderer(),
   });
 
   const handleSend = async () => {
@@ -139,11 +156,11 @@ ws.current.onclose = (event) => {
       await addMessage(message, token);
       ws.current.send(JSON.stringify(message));
       if (mode === "Học sinh") {
-  setMessages((prev) => [...prev, { ...message, rendered: marked.parse(message.content) }]);
-}
+        setMessages((prev) => [...prev, { ...message, rendered: marked.parse(message.content) }]);
+      }
 
       if (mode === 'Học sinh' && aiEnabled) {
-        setIsAiResponding(true); // Hiển thị loading
+        setIsAiResponding(true);
         const aiRequest = {
           messages: [...messages, aiMessage],
           session_id: currentSession,
@@ -152,7 +169,7 @@ ws.current.onclose = (event) => {
         const response = await sendToAI(aiRequest, token);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const reader = response.body.getReader();
-        const decoder = new TextDecoder('utf-8'); // Rõ ràng dùng UTF-8
+        const decoder = new TextDecoder('utf-8');
         let aiResponse = '';
         const aiTimestamp = new Date().toISOString();
 
@@ -160,7 +177,7 @@ ws.current.onclose = (event) => {
           const { done, value } = await reader.read();
           if (done) break;
           const chunk = decoder.decode(value, { stream: true });
-          console.log('SSE chunk:', chunk); // Debug log
+          console.log('SSE chunk:', chunk);
           const lines = chunk.split('\n\n');
 
           for (const line of lines) {
@@ -173,7 +190,7 @@ ws.current.onclose = (event) => {
         }
 
         aiResponse = aiResponse.trim();
-        console.log('Final AI response:', aiResponse); // Debug log
+        console.log('Final AI response:', aiResponse);
         setMessages((prev) => [
           ...prev,
           {
@@ -184,25 +201,24 @@ ws.current.onclose = (event) => {
             timestamp: aiTimestamp,
           },
         ]);
-        setIsAiResponding(false); // Tắt loading
-        // 🔁 Gọi lại toàn bộ đoạn hội thoại từ DB để render đẹp
-setTimeout(async () => {
-  try {
-    const res = await getConversations(currentSession, token);
-    const uniqueMessages = res.data.filter(
-      (msg, index, self) =>
-        index === self.findIndex((m) => m.timestamp === msg.timestamp && m.content === msg.content)
-    );
-    setMessages(uniqueMessages.map((msg) => ({
-      ...msg,
-      content: msg.content.replace('<br>', '\n'),
-      rendered: marked.parse(msg.content)
-    })));
-    console.log("Đã reload hội thoại hoàn chỉnh từ DB");
-  } catch (err) {
-    console.error("Lỗi reload hội thoại:", err);
-  }
-}, 300);
+        setIsAiResponding(false);
+        setTimeout(async () => {
+          try {
+            const res = await getConversations(currentSession, token);
+            const uniqueMessages = res.data.filter(
+              (msg, index, self) =>
+                index === self.findIndex((m) => m.timestamp === msg.timestamp && m.content === msg.content)
+            );
+            setMessages(uniqueMessages.map((msg) => ({
+              ...msg,
+              content: msg.content.replace('<br>', '\n'),
+              rendered: marked.parse(msg.content)
+            })));
+            console.log("Đã reload hội thoại hoàn chỉnh từ DB");
+          } catch (err) {
+            console.error("Lỗi reload hội thoại:", err);
+          }
+        }, 300);
       }
       setInput('');
     } catch (err) {
@@ -227,32 +243,39 @@ setTimeout(async () => {
     <div className="main">
       <div className="chat-container">
         <div className="chat-header">
+          {userInfo && (
+            <span className="greeting">
+              {mode === 'Học sinh'
+                ? `Chào em ${userInfo.name} lớp ${userInfo.class}`
+                : `Chào giáo viên ${userInfo.username}`}
+            </span>
+          )}
           {mode === 'Giáo viên' && (
-  <button
-  className="back-btn"
-  onClick={() => {
-    try {
-      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-        ws.current.onclose = null; // ✅ Ngăn không cho gọi navigate('/login') trong onclose
-        ws.current.close();
-      }
-    } catch (e) {
-      console.warn("WebSocket close error:", e);
-    }
-    navigate('/teacher', { replace: true }); // ✅ Không logout, chỉ quay về dashboard
-  }}
->
-  ⬅ Quay lại
-</button>
-
-)}
-
+            <button
+              className="back-btn"
+              onClick={() => {
+                try {
+                  if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+                    ws.current.onclose = null;
+                    ws.current.close();
+                  }
+                } catch (e) {
+                  console.warn("WebSocket close error:", e);
+                }
+                navigate('/teacher', { replace: true });
+              }}
+            >
+              ⬅ Quay lại
+            </button>
+          )}
         </div>
         <div className="chat-window">
           {isLoading ? (
             <div className="text-center text-gray-500">Đang tải tin nhắn...</div>
           ) : messages.length === 0 ? (
-            <div className="text-center text-gray-500">Chưa có tin nhắn trong phiên này.</div>
+            <div className="flex flex-col items-center justify-center h-full text-gray-500">
+              <p className="text-lg font-medium">Hôm nay em muốn hỏi cô Hương gì nhỉ? 😊</p>
+            </div>
           ) : (
             <>
               {messages.map((msg, idx) => (
@@ -263,8 +286,8 @@ setTimeout(async () => {
                   {msg.role === 'user'
                     ? '👦 Học sinh: '
                     : msg.role === 'assistant'
-                      ? '👩‍🏫 Cô Hương (AI): '
-                      : '👩‍🏫 Cô Hương: '}
+                    ? '👩‍🏫 Cô Hương (AI): '
+                    : '👩‍🏫 Cô Hương: '}
                   <div
                     className="message-content"
                     dangerouslySetInnerHTML={{ __html: msg.rendered || marked.parse(msg.content || '') }}
