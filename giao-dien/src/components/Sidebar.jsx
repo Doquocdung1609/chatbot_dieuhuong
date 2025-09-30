@@ -9,7 +9,8 @@ const Sidebar = ({
   currentSession,
   setCurrentSession,
   handleLogout,
-  isTeacher = false
+  isTeacher = false,
+  setCollapsedGlobal,   // 🔹 thêm prop để báo cho Chat biết
 }) => {
   const [sessions, setSessions] = useState([]);
   const [collapsed, setCollapsed] = useState(false);
@@ -17,15 +18,15 @@ const Sidebar = ({
   const hasCreatedInitialSession = useRef(false);
 
   useEffect(() => {
-  if (token && !hasFetched.current) {
-    hasFetched.current = true;
-    if (isTeacher) {
-      console.log('Teacher logged in → skip fetching student sessions');
-      return; // hoặc gọi fetchTeacherSessions() nếu có
+    if (token && !hasFetched.current) {
+      hasFetched.current = true;
+      if (isTeacher) {
+        console.log('Teacher logged in → skip fetching student sessions');
+        return;
+      }
+      if (studentId) fetchSessions();
     }
-    if (studentId) fetchSessions();
-  }
-}, [studentId, token, isTeacher]);
+  }, [studentId, token, isTeacher]);
 
   const fetchSessions = async () => {
     try {
@@ -59,57 +60,62 @@ const Sidebar = ({
     }
   };
 
- return (
-  <aside className={`sidebar-container ${collapsed ? 'collapsed' : ''}`}>
-    <div className="sidebar-header">
-      <div className="sidebar-title">
-        <MessageSquare size={22} />
-        {!collapsed && <span>Chatbot Cô Hương</span>}
+  const toggleSidebar = () => {
+    setCollapsed(!collapsed);
+    setCollapsedGlobal && setCollapsedGlobal(!collapsed); // 🔹 báo trạng thái ra ngoài
+  };
+
+  return (
+    <aside className={`sidebar-container ${collapsed ? 'collapsed' : ''}`}>
+      <div className="sidebar-header">
+        <div className="sidebar-title">
+          <MessageSquare size={22} />
+          {!collapsed && <span>Chatbot Cô Hương</span>}
+        </div>
+        <button className="toggle-btn" onClick={toggleSidebar}>
+          {collapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+        </button>
       </div>
-      <button className="toggle-btn" onClick={() => setCollapsed(!collapsed)}>
-        {collapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
-      </button>
-    </div>
 
-    {!collapsed && (
-      <>
-        {studentId && (
-          <button className="logout-btn" onClick={handleLogout}>
-            <LogOut size={18} />
-            <span>Đăng xuất</span>
-          </button>
-        )}
-
-        {!isTeacher && (
-          <div className="session-section">
-            <h4 className="section-title">Lịch sử trò chuyện</h4>
-
-            <button className="create-session-btn" onClick={createNewSession}>
-              <PlusCircle size={18} />
-              <span>Tạo chat mới</span>
+      {!collapsed && (
+        <>
+          {studentId && (
+            <button className="logout-btn" onClick={handleLogout}>
+              <LogOut size={18} />
+              <span>Đăng xuất</span>
             </button>
+          )}
 
-            <div className="session-list">
-              {sessions.length === 0 ? (
-                <p className="empty-text">Chưa có phiên chat nào</p>
-              ) : (
-                sessions.map((s) => (
-                  <div
-                    key={s.id}
-                    className={`session-item ${currentSession === s.id ? 'active' : ''}`}
-                    onClick={() => setCurrentSession(s.id)}
-                  >
-                    <span>{s.title}</span>
-                  </div>
-                ))
-              )}
+          {!isTeacher && (
+            <div className="session-section">
+              <h4 className="section-title">Lịch sử trò chuyện</h4>
+
+              <button className="create-session-btn" onClick={createNewSession}>
+                <PlusCircle size={18} />
+                <span>Tạo chat mới</span>
+              </button>
+
+              <div className="session-list">
+                {sessions.length === 0 ? (
+                  <p className="empty-text">Chưa có phiên chat nào</p>
+                ) : (
+                  sessions.map((s) => (
+                    <div
+                      key={s.id}
+                      className={`session-item ${currentSession === s.id ? 'active' : ''}`}
+                      onClick={() => setCurrentSession(s.id)}
+                    >
+                      <span>{s.title}</span>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
-          </div>
-        )}
-      </>
-    )}
-  </aside>
-);
+          )}
+        </>
+      )}
+    </aside>
+  );
 };
 
 export default Sidebar;

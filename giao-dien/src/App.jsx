@@ -55,6 +55,7 @@ function AppContent({
   handleLogin,
   handleLogout,
 }) {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
@@ -64,8 +65,7 @@ function AppContent({
   const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
 
   return (
-    <div className="app-container flex">
-      {/* ✅ Chỉ hiển thị Sidebar sau khi đăng nhập */}
+    <div className={`app-container flex main ${sidebarCollapsed ? 'collapsed' : ''}`}>
       {userId && token && (
         <Sidebar
           studentId={userId}
@@ -74,6 +74,7 @@ function AppContent({
           setCurrentSession={setCurrentSession}
           handleLogout={handleLogout}
           isTeacher={mode === 'Giáo viên'}
+          setCollapsedGlobal={setSidebarCollapsed}   // 👈 truyền xuống Sidebar
         />
       )}
 

@@ -154,7 +154,7 @@
 
 /* ===== KHU VỰC CHAT ===== */
 .chat-container {
-  position: fixed;
+  position: relative;
   top: 0;
   left: var(--sidebar-width);
   width: calc(100vw - var(--sidebar-width));
@@ -166,7 +166,7 @@
 }
 
 /* Khi sidebar thu gọn */
-.sidebar-container.collapsed ~ .chat-container {
+.main.collapsed .chat-container {
   left: var(--sidebar-collapsed-width);
   width: calc(100vw - var(--sidebar-collapsed-width));
 }
@@ -189,8 +189,7 @@
   transition: left 0.3s ease, width 0.3s ease;
 }
 
-/* Khi sidebar thu gọn */
-.sidebar-container.collapsed ~ .chat-header {
+.main.collapsed .chat-header {
   left: var(--sidebar-collapsed-width);
   width: calc(100vw - var(--sidebar-collapsed-width));
 }
@@ -224,7 +223,7 @@
 }
 
 /* Khi sidebar thu gọn */
-.sidebar-container.collapsed ~ .input-container {
+.main.collapsed .input-container {
   left: var(--sidebar-collapsed-width);
   width: calc(100vw - var(--sidebar-collapsed-width));
 }
