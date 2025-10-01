@@ -1,5 +1,5 @@
 import asyncio
-import psycopg2
+import psycopg  # Changed from psycopg2
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body, Query
 from fastapi.middleware.cors import CORSMiddleware
 import json
@@ -30,7 +30,7 @@ DB_USER = os.environ.get("DB_USER")
 DB_PASSWORD = os.environ.get("DB_PASSWORD")
 
 try:
-    conn = psycopg2.connect(
+    conn = psycopg.connect(  # Changed from psycopg2.connect
         host=DB_HOST,
         port=DB_PORT,
         dbname=DB_NAME,
@@ -433,7 +433,7 @@ async def add_message(message: Message, token: str = Body(...)):
     cursor.execute(
         "INSERT INTO conversations (session_id, role, content, timestamp, read_by_teacher) VALUES (%s, %s, %s, %s, %s)",
         (message.session_id, message.role, message.content, message.timestamp,
-        1 if message.role in ["assistant", "teacher"] else 0)
+         1 if message.role in ["assistant", "teacher"] else 0)
     )
     conn.commit()
 
