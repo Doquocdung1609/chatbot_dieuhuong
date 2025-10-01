@@ -6,6 +6,8 @@ import Chat from './components/Chat';
 import TeacherDashboard from './components/TeacherDashboard';
 import Sidebar from './components/Sidebar';
 import './index.css';
+import { getSessions, getConversations, createSession } from './services/api';
+
 
 function App() {
   const [mode, setMode] = useState('Học sinh');
@@ -151,20 +153,51 @@ export default App;
 function TeacherChatWrapper({ userId, token, aiEnabled, currentSession, setCurrentSession, handleLogout }) {
   const { studentId } = useParams();
   const location = useLocation();
-  const [sessionId, setSessionId] = useState(location.state?.sessionId || currentSession);
+  const [sessionId, setSessionId] = useState(null);
 
   useEffect(() => {
-    if (location.state?.sessionId && location.state.sessionId !== sessionId) {
-      setSessionId(location.state.sessionId);
-      setCurrentSession(location.state.sessionId);
-    }
-  }, [location.state?.sessionId]);
+    const fetchLatestSession = async () => {
+      try {
+        const sessionsRes = await getSessions(studentId, token);
+        const sessions = sessionsRes.data;
+        let sessionIdToUse = null;
 
-  useEffect(() => {
-    if (currentSession && currentSession !== sessionId) {
-      setSessionId(currentSession);
+        if (sessions.length > 0) {
+          // Tìm session mới nhất
+          sessionIdToUse = sessions[0].id;
+          let latestMessageTime = null;
+          for (const session of sessions) {
+            const conversationsRes = await getConversations(session.id, token);
+            const messages = conversationsRes.data;
+            if (messages.length > 0) {
+              const latestMessage = messages[messages.length - 1];
+              if (!latestMessageTime || latestMessage.timestamp > latestMessageTime) {
+                latestMessageTime = latestMessage.timestamp;
+                sessionIdToUse = session.id;
+              }
+            }
+          }
+        } else {
+          // Tạo session mới nếu không có session
+          const newSessionRes = await createSession(
+            { student_id: studentId, title: `Chat ${new Date().toISOString()}` },
+            token
+          );
+          sessionIdToUse = newSessionRes.data.id;
+        }
+
+        setSessionId(sessionIdToUse);
+        setCurrentSession(sessionIdToUse);
+      } catch (err) {
+        console.error('Fetch sessions error:', err);
+        if (err.response?.status === 401) navigate('/login');
+      }
+    };
+
+    if (studentId && token) {
+      fetchLatestSession();
     }
-  }, [currentSession]);
+  }, [studentId, token, setCurrentSession]);
 
   return (
     <div className="flex w-full">
@@ -176,7 +209,6 @@ function TeacherChatWrapper({ userId, token, aiEnabled, currentSession, setCurre
         handleLogout={handleLogout}
         isTeacher={true}
       />
-
       <div className="flex-1">
         <Chat
           mode="Giáo viên"

@@ -22,30 +22,30 @@ const Sidebar = ({
 
   const isTeacherChatPage = location.pathname.startsWith('/teacher/chat');
 
-  useEffect(() => {
+useEffect(() => {
   if (token && studentId && !hasFetched.current) {
     hasFetched.current = true;
-    fetchSessions();  // ✅ luôn gọi cho cả giáo viên và học sinh
+    fetchSessions();
   }
 }, [studentId, token]);
 
+const fetchSessions = async () => {
+  try {
+    const res = await getSessions(studentId, token);
+    setSessions(res.data);
 
-  const fetchSessions = async () => {
-    try {
-      const res = await getSessions(studentId, token);
-      setSessions(res.data);
-
-      if (res.data.length > 0 && !currentSession) {
-        setCurrentSession(res.data[0].id);
-      } else if (res.data.length === 0 && !hasCreatedInitialSession.current) {
-        hasCreatedInitialSession.current = true;
-        createNewSession();
-      }
-    } catch (err) {
-      console.error('Fetch sessions error:', err);
-      if (err.response?.status === 401) window.location.href = '/login';
+    if (res.data.length > 0 && !currentSession) {
+      const latestSession = res.data[0].id; // Chọn session mới nhất
+      setCurrentSession(latestSession);
+    } else if (res.data.length === 0 && !hasCreatedInitialSession.current) {
+      hasCreatedInitialSession.current = true;
+      createNewSession();
     }
-  };
+  } catch (err) {
+    console.error('Fetch sessions error:', err);
+    if (err.response?.status === 401) window.location.href = '/login';
+  }
+};
 
   const createNewSession = async () => {
     try {

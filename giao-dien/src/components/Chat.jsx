@@ -103,42 +103,42 @@ const Chat = ({ mode, userId, studentId, token, currentSession, setCurrentSessio
   };
 
   useEffect(() => {
-    if (!currentSession && mode === 'Học sinh') return;
-    if (currentSession && token) {
-      if (sessionRef.current !== currentSession) {
-        if (ws.current && ws.current.readyState === WebSocket.OPEN) ws.current.close();
-        sessionRef.current = currentSession;
-        reconnectAttempts.current = 0;
-      }
-      setIsLoading(true);
-      const timeout = setTimeout(() => {
-        connectWebSocket();
-        getConversations(currentSession, token)
-          .then((res) => {
-            const uniqueMessages = res.data.filter(
-              (msg, index, self) =>
-                index === self.findIndex((m) => m.timestamp === msg.timestamp && m.content === msg.content)
-            );
-            setMessages(uniqueMessages.map((msg) => ({
-              ...msg,
-              content: msg.content.replace('<br>', '\n'),
-              rendered: marked.parse(msg.content)
-            })));
-            setIsLoading(false);
-          })
-          .catch((err) => {
-            setIsLoading(false);
-            if (err.response?.status === 401) navigate('/login');
-          });
-      }, 500);
-      return () => {
-        clearTimeout(timeout);
-        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-          ws.current.close(); // Đóng WebSocket khi component unmount
-        }
-      };
+  if (!currentSession && mode === 'Học sinh') return;
+  if (currentSession && token) {
+    if (sessionRef.current !== currentSession) {
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) ws.current.close();
+      sessionRef.current = currentSession;
+      reconnectAttempts.current = 0;
     }
-  }, [currentSession, token, mode, navigate]);
+    setIsLoading(true);
+    const timeout = setTimeout(() => {
+      connectWebSocket();
+      getConversations(currentSession, token)
+        .then((res) => {
+          const uniqueMessages = res.data.filter(
+            (msg, index, self) =>
+              index === self.findIndex((m) => m.timestamp === msg.timestamp && m.content === msg.content)
+          );
+          setMessages(uniqueMessages.map((msg) => ({
+            ...msg,
+            content: msg.content.replace('<br>', '\n'),
+            rendered: marked.parse(msg.content)
+          })));
+          setIsLoading(false);
+        })
+        .catch((err) => {
+          setIsLoading(false);
+          if (err.response?.status === 401) navigate('/login');
+        });
+    }, 500);
+    return () => {
+      clearTimeout(timeout);
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+        ws.current.close();
+      }
+    };
+  }
+}, [currentSession, token, mode, studentId, navigate]); // Thêm studentId vào dependency array
 
   marked.setOptions({
     breaks: true,

@@ -6,7 +6,7 @@ import {
   createSession,
   getSessions,
   getConversations,
-  markRead   
+  markRead
 } from '../services/api';
 import Chat from './Chat';
 import '../styles/teacher-dashboard.css';
@@ -27,7 +27,7 @@ const formatDate = (isoString) => {
 
 
 
-const TeacherDashboard = ({userId, aiEnabled, setAiEnabled, token, handleLogout }) => {
+const TeacherDashboard = ({ userId, aiEnabled, setAiEnabled, token, handleLogout }) => {
   const [students, setStudents] = useState([]);
   const [filters, setFilters] = useState({ name: '', class: '', gvcn: '' });
   const [view, setView] = useState('home');
@@ -59,7 +59,7 @@ const TeacherDashboard = ({userId, aiEnabled, setAiEnabled, token, handleLogout 
 
   useEffect(() => {
     fetchStudents();
-  }, [token]);
+  }, [token, location.pathname]);
 
   const handleFilter = (e) => {
     setFilters({ ...filters, [e.target.name]: e.target.value });
@@ -72,40 +72,19 @@ const TeacherDashboard = ({userId, aiEnabled, setAiEnabled, token, handleLogout 
       s.gvcn.toLowerCase().includes(filters.gvcn.toLowerCase())
   );
 
-const handleReply = async (studentId) => {
+  const handleReply = async (studentId) => {
   try {
     setSelectedStudent(studentId);
     const sessionsRes = await getSessions(studentId, token);
     const sessions = sessionsRes.data;
 
-    let sessionIdToUse = null;
-    if (sessions.length > 0) {
-      sessionIdToUse = sessions[0].id;
-      let latestMessageTime = null;
-
-      for (const session of sessions) {
-        const conversationsRes = await getConversations(session.id, token);
-        const messages = conversationsRes.data;
-        if (messages.length > 0) {
-          const latestMessage = messages[messages.length - 1];
-          if (!latestMessageTime || latestMessage.timestamp > latestMessageTime) {
-            latestMessageTime = latestMessage.timestamp;
-            sessionIdToUse = session.id;
-          }
-        }
-      }
-    } else {
-      const newSessionRes = await createSession(
-        { student_id: studentId, title: `Chat ${new Date().toISOString()}` },
-        token
-      );
-      sessionIdToUse = newSessionRes.data.id;
+    // Đánh dấu tất cả session của học sinh là đã đọc
+    for (const session of sessions) {
+      await markRead(session.id, token);
     }
 
-    await markRead(sessionIdToUse, token);
-    setCurrentSession(sessionIdToUse);
     setView('chat');
-    navigate(`/teacher/chat/${studentId}`, { state: { sessionId: sessionIdToUse } });
+    navigate(`/teacher/chat/${studentId}`);
   } catch (err) {
     if (err.response?.status === 401) {
       window.location.href = '/login';
@@ -120,7 +99,7 @@ const handleReply = async (studentId) => {
     return (
       <Chat
         mode="Giáo viên"
-        userId={userId}          
+        userId={userId}
         studentId={selectedStudent}
         token={token}
         currentSession={currentSession}
