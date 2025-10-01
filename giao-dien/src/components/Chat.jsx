@@ -4,7 +4,7 @@ import { getConversations, addMessage, sendToAI, getStudent, getTeacher } from '
 import '../styles/chat.css';
 import { marked } from 'marked';
 
-const Chat = ({ mode, userId, token, currentSession, setCurrentSession, aiEnabled }) => {
+const Chat = ({ mode, userId, studentId, token, currentSession, setCurrentSession, aiEnabled }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -24,7 +24,7 @@ const Chat = ({ mode, userId, token, currentSession, setCurrentSession, aiEnable
           const response = await getStudent(userId, token);
           setUserInfo(response.data);
         } else {
-          const response = await getTeacher(userId, token);
+          const response = await getStudent(studentId, token);
           setUserInfo(response.data);
         }
       } catch (err) {
@@ -131,7 +131,12 @@ const Chat = ({ mode, userId, token, currentSession, setCurrentSession, aiEnable
             if (err.response?.status === 401) navigate('/login');
           });
       }, 500);
-      return () => clearTimeout(timeout);
+      return () => {
+        clearTimeout(timeout);
+        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+          ws.current.close(); // Đóng WebSocket khi component unmount
+        }
+      };
     }
   }, [currentSession, token, mode, navigate]);
 

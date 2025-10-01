@@ -277,7 +277,20 @@ async def broadcast_message_to_clients(session_id: int, broadcast_message: dict)
         return
     print(f"Preparing to broadcast message: {broadcast_message}")
     await asyncio.sleep(0.1)  # Small delay to allow connection stabilization
+
+    # Lấy student_id từ chat_sessions
+    cursor.execute("SELECT student_id FROM chat_sessions WHERE id = ?", (session_id,))
+    session = cursor.fetchone()
+    if not session:
+        print(f"Session {session_id} not found")
+        return
+    student_id = session[0]
+
     for user_id, clients in list(connected_clients[session_id].items()):
+        # Chỉ gửi tin nhắn đến student_id hoặc giáo viên
+        if user_id != student_id and broadcast_message["role"] != "teacher":
+            print(f"Skipping broadcast to user_id {user_id} for session_id {session_id} (not student or teacher)")
+            continue
         for client_ws in clients[:]:
             if client_ws.client_state == WebSocketState.CONNECTED:
                 for attempt in range(3):

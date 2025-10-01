@@ -121,20 +121,22 @@ function AppContent({
           />
 
           <Route
-  path="/teacher/chat/:studentId"
-  element={
-    userId && token && mode === "Giáo viên" ? (
-      <TeacherChatWrapper
-        token={token}
-        aiEnabled={aiEnabled}
-        currentSession={currentSession}
-        setCurrentSession={setCurrentSession}
-      />
-    ) : (
-      <Navigate to="/login" />
-    )
-  }
-/>
+            path="/teacher/chat/:studentId"
+            element={
+              userId && token && mode === "Giáo viên" ? (
+                <TeacherChatWrapper
+                  userId={userId}
+                  token={token}
+                  aiEnabled={aiEnabled}
+                  currentSession={currentSession}
+                  setCurrentSession={setCurrentSession}
+                  handleLogout={handleLogout}
+                />
+              ) : (
+                <Navigate to="/login" />
+              )
+            }
+          />
 
           {/* Mặc định điều hướng về login */}
           <Route path="*" element={<Navigate to="/login" />} />
@@ -146,7 +148,7 @@ function AppContent({
 
 export default App;
 
-function TeacherChatWrapper({ token, aiEnabled, currentSession, setCurrentSession }) {
+function TeacherChatWrapper({ userId, token, aiEnabled, currentSession, setCurrentSession, handleLogout }) {
   const { studentId } = useParams();
   const location = useLocation();
   const [sessionId, setSessionId] = useState(location.state?.sessionId || currentSession);
@@ -171,13 +173,15 @@ function TeacherChatWrapper({ token, aiEnabled, currentSession, setCurrentSessio
         token={token}
         currentSession={sessionId}
         setCurrentSession={setCurrentSession}
+        handleLogout={handleLogout}
         isTeacher={true}
       />
 
       <div className="flex-1">
         <Chat
           mode="Giáo viên"
-          userId={parseInt(studentId)}
+          userId={userId}
+          studentId={studentId}
           token={token}
           aiEnabled={aiEnabled}
           currentSession={sessionId}

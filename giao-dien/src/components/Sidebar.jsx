@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { getSessions, createSession } from '../services/api';
 import { ChevronLeft, ChevronRight, PlusCircle, LogOut, MessageSquare } from 'lucide-react';
 import '../styles/chat.css';
-import { useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom'; // Thêm useNavigate
 
 const Sidebar = ({
   studentId,
@@ -18,6 +18,7 @@ const Sidebar = ({
   const hasFetched = useRef(false);
   const hasCreatedInitialSession = useRef(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
   const isTeacherChatPage = location.pathname.startsWith('/teacher/chat');
 
@@ -64,6 +65,11 @@ const Sidebar = ({
   const toggleSidebar = () => {
     setCollapsed(!collapsed);
     setCollapsedGlobal && setCollapsedGlobal(!collapsed); // 🔹 báo trạng thái ra ngoài
+  };
+
+  const onLogout = () => {
+    handleLogout(); // Gọi hàm handleLogout để reset state
+    navigate('/login'); // Điều hướng về trang đăng nhập
   };
 
   return (

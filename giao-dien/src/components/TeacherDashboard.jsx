@@ -27,7 +27,7 @@ const formatDate = (isoString) => {
 
 
 
-const TeacherDashboard = ({ aiEnabled, setAiEnabled, token }) => {
+const TeacherDashboard = ({userId, aiEnabled, setAiEnabled, token, handleLogout }) => {
   const [students, setStudents] = useState([]);
   const [filters, setFilters] = useState({ name: '', class: '', gvcn: '' });
   const [view, setView] = useState('home');
@@ -102,9 +102,7 @@ const handleReply = async (studentId) => {
       sessionIdToUse = newSessionRes.data.id;
     }
 
-    // ✅ Đánh dấu là đã đọc khi giáo viên mở chat
     await markRead(sessionIdToUse, token);
-
     setCurrentSession(sessionIdToUse);
     setView('chat');
     navigate(`/teacher/chat/${studentId}`, { state: { sessionId: sessionIdToUse } });
@@ -122,7 +120,8 @@ const handleReply = async (studentId) => {
     return (
       <Chat
         mode="Giáo viên"
-        userId={selectedStudent}
+        userId={userId}          
+        studentId={selectedStudent}
         token={token}
         currentSession={currentSession}
         setCurrentSession={setCurrentSession}
