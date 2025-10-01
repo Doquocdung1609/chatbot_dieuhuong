@@ -191,7 +191,7 @@ async def get_students(token: str):
 async def student_register(student: StudentRegister):
     cursor.execute("SELECT username FROM students WHERE username = ?", (student.username,))
     if cursor.fetchone():
-        raise HTTPException(status_code=400, detail="Username already exists")
+        raise HTTPException(status_code=400, detail="Số điện thoại đã được đăng ký")
     cursor.execute(
         "INSERT INTO students (username, name, class, gvcn, password) VALUES (?, ?, ?, ?, ?)",
         (student.username, student.name, student.class_name, student.gvcn, student.password)
@@ -211,7 +211,7 @@ async def student_login(student: StudentLogin):
                       (user_id, "student", token, expires_at))
         conn.commit()
         return {"id": user_id, "token": token}
-    raise HTTPException(status_code=401, detail="Invalid username or password")
+    raise HTTPException(status_code=401, detail="Sai tài khoản hoặc mật khẩu")
 
 @app.post("/teacher_login")
 async def teacher_login(teacher: TeacherLogin):

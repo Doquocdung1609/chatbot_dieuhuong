@@ -99,6 +99,28 @@
   letter-spacing: 1px;
 }
 
+.auth-alert {
+  margin-bottom: 15px;
+  padding: 12px 15px;
+  border-radius: 10px;
+  text-align: center;
+  font-size: 15px;
+  animation: fadeIn 0.4s ease;
+  font-weight: 500;
+}
+
+.auth-alert.error {
+  background: rgba(255, 77, 77, 0.1);
+  color: #d93025;
+  border: 1px solid rgba(255, 77, 77, 0.3);
+}
+
+.auth-alert.success {
+  background: rgba(52, 199, 89, 0.1);
+  color: #2e7d32;
+  border: 1px solid rgba(52, 199, 89, 0.3);
+}
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }

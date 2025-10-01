@@ -8,10 +8,19 @@ function Login({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState('Học sinh');
+  const [error, setError] = useState('');
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
+
+    // Kiểm tra validate
+    if (!username || !password) {
+      setError('Vui lòng điền đầy đủ thông tin.');
+      return;
+    }
+
     try {
       if (mode === 'Học sinh') {
         const response = await loginStudent({ username, password });
@@ -23,7 +32,7 @@ function Login({ onLogin }) {
         navigate('/teacher');
       }
     } catch (err) {
-      alert('Đăng nhập thất bại: ' + (err.response?.data?.detail || 'Lỗi không xác định'));
+      setError('Đăng nhập thất bại: ' + (err.response?.data?.detail || 'Tài khoản hoặc mật khẩu không đúng.'));
     }
   };
 
@@ -36,6 +45,9 @@ function Login({ onLogin }) {
 
         <h2 className="auth-title">Đăng nhập</h2>
 
+        {/* --- Thông báo lỗi --- */}
+        {error && <div className="auth-alert">{error}</div>}
+
         <form onSubmit={handleSubmit} className="auth-form">
           <select value={mode} onChange={(e) => setMode(e.target.value)} className="auth-input">
             <option value="Học sinh">Học sinh</option>
@@ -46,7 +58,6 @@ function Login({ onLogin }) {
             placeholder={mode === 'Học sinh' ? 'Số điện thoại' : 'Username'}
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            required
           />
           <input
             className="auth-input"
@@ -54,7 +65,6 @@ function Login({ onLogin }) {
             placeholder="Mật khẩu"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            required
           />
           <button type="submit" className="auth-button">Đăng nhập</button>
           {mode === 'Học sinh' && (
