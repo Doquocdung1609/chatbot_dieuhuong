@@ -130,6 +130,13 @@
   background: #dcfce7;
   color: #166534;
 }
+.status.no-message {
+  background-color: #e0e0e0;
+  color: #555;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
 
 /* Buttons */
 .reply-btn {
@@ -147,6 +154,12 @@
 }
 .reply-btn:hover {
   background: #059669;
+}
+
+.reply-btn:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .sidebar-container.collapsed ~ .teacher-dashboard {

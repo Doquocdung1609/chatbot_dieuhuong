@@ -1,9 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   getStudents,
   getUnread,
   getLastMessage,
-  createSession,
   getSessions,
   getConversations,
   markRead
@@ -11,11 +10,12 @@ import {
 import Chat from './Chat';
 import '../styles/teacher-dashboard.css';
 import { FiRefreshCcw, FiFilter, FiMessageCircle } from 'react-icons/fi';
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from 'react-router-dom';
 
 const formatDate = (isoString) => {
-  if (!isoString) return '—';
+  if (!isoString || typeof isoString !== 'string') return 'Chưa có tin nhắn';
   const date = new Date(isoString);
+  if (isNaN(date.getTime())) return 'Chưa có tin nhắn';
   return date.toLocaleString('vi-VN', {
     hour: '2-digit',
     minute: '2-digit',
@@ -25,8 +25,6 @@ const formatDate = (isoString) => {
   }).replace(',', '');
 };
 
-
-
 const TeacherDashboard = ({ userId, aiEnabled, setAiEnabled, token, handleLogout }) => {
   const [students, setStudents] = useState([]);
   const [filters, setFilters] = useState({ name: '', class: '', gvcn: '' });
@@ -34,6 +32,10 @@ const TeacherDashboard = ({ userId, aiEnabled, setAiEnabled, token, handleLogout
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [currentSession, setCurrentSession] = useState(null);
   const navigate = useNavigate();
+  const location = useLocation();
+  const ws = useRef(null);
+  const reconnectAttempts = useRef(0);
+  const maxReconnectAttempts = 5;
 
   const fetchStudents = async () => {
     if (!token) return;
@@ -41,24 +43,122 @@ const TeacherDashboard = ({ userId, aiEnabled, setAiEnabled, token, handleLogout
       const res = await getStudents(token);
       const updated = await Promise.all(
         res.data.map(async (s) => {
-          const unread = await getUnread(s.id, token);
-          const last = await getLastMessage(s.id, token);
+          const sessionsRes = await getSessions(s.id, token);
+          const sessions = sessionsRes.data;
+          let hasMessages = false;
+          let unreadStatus = 'Chưa nhắn';
+          let lastMessageTime = null;
+
+          if (sessions.length > 0) {
+            for (const session of sessions) {
+              const conversationsRes = await getConversations(session.id, token);
+              if (conversationsRes.data.length > 0) {
+                hasMessages = true;
+                break;
+              }
+            }
+
+            if (hasMessages) {
+              const unread = await getUnread(s.id, token);
+              const last = await getLastMessage(s.id, token);
+              unreadStatus = unread.data.unread ? 'Chưa đọc' : 'Đã đọc';
+              lastMessageTime = last.data.last_time;
+            }
+          }
+
+          console.log('Student data:', {
+            id: s.id,
+            hasSessions: sessions.length > 0,
+            hasMessages,
+            unreadStatus,
+            lastMessageTime,
+          });
+
           return {
             ...s,
-            unread: unread.data.unread ? 'Chưa đọc' : 'Đã đọc',
-            last_time: last.data.last_time,
+            unread: unreadStatus,
+            last_time: lastMessageTime,
+            hasMessages,
           };
         })
       );
       setStudents(updated);
     } catch (err) {
+      console.error('Fetch students error:', err);
       if (err.response?.status === 401) window.location.href = '/login';
     }
   };
 
+  // Kết nối WebSocket để nhận thông báo tin nhắn mới
+  const connectWebSocket = () => {
+    if (!token || !userId) {
+      console.log('Missing token or userId, skipping WebSocket connection');
+      return;
+    }
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      console.log(`WebSocket already open for teacherId: ${userId}`);
+      return;
+    }
+    ws.current = new WebSocket(`ws://localhost:8000/ws/teacher/${userId}/${token}`);
+    ws.current.onopen = () => {
+      console.log(`WebSocket connected for teacherId: ${userId}`);
+      reconnectAttempts.current = 0;
+    };
+    ws.current.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log('WebSocket received:', data);
+        if (data.type === 'ping') return;
+
+        // Cập nhật state students khi nhận tin nhắn mới
+        if (data.type === 'new_message') {
+          const { studentId, sessionId, lastMessageTime } = data;
+          setStudents((prev) =>
+            prev.map((s) =>
+              s.id === studentId
+                ? {
+                    ...s,
+                    unread: 'Chưa đọc',
+                    last_time: lastMessageTime,
+                    hasMessages: true,
+                  }
+                : s
+            )
+          );
+        }
+      } catch (err) {
+        console.error('WebSocket message parsing error:', err);
+      }
+    };
+    ws.current.onclose = (event) => {
+      console.log('WebSocket closed:', event);
+      if (event.code === 1008) {
+        navigate('/login');
+        return;
+      }
+      if (reconnectAttempts.current < maxReconnectAttempts) {
+        setTimeout(() => {
+          reconnectAttempts.current += 1;
+          console.log(`Reconnecting WebSocket, attempt ${reconnectAttempts.current}`);
+          connectWebSocket();
+        }, 1000 * (reconnectAttempts.current + 1));
+      }
+    };
+    ws.current.onerror = (err) => {
+      console.error('WebSocket error:', err);
+      ws.current.close();
+    };
+  };
 
   useEffect(() => {
     fetchStudents();
+    connectWebSocket();
+
+    return () => {
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+        ws.current.close();
+      }
+    };
   }, [token, location.pathname]);
 
   const handleFilter = (e) => {
@@ -73,27 +173,33 @@ const TeacherDashboard = ({ userId, aiEnabled, setAiEnabled, token, handleLogout
   );
 
   const handleReply = async (studentId) => {
-  try {
-    setSelectedStudent(studentId);
-    const sessionsRes = await getSessions(studentId, token);
-    const sessions = sessionsRes.data;
+    try {
+      setSelectedStudent(studentId);
+      const sessionsRes = await getSessions(studentId, token);
+      const sessions = sessionsRes.data;
 
-    // Đánh dấu tất cả session của học sinh là đã đọc
-    for (const session of sessions) {
-      await markRead(session.id, token);
+      for (const session of sessions) {
+        await markRead(session.id, token);
+      }
+
+      // Cập nhật trạng thái "Đã đọc" sau khi nhấn "Trả lời"
+      setStudents((prev) =>
+        prev.map((s) =>
+          s.id === studentId ? { ...s, unread: 'Đã đọc' } : s
+        )
+      );
+
+      setView('chat');
+      navigate(`/teacher/chat/${studentId}`);
+    } catch (err) {
+      console.error('Handle reply error:', err);
+      if (err.response?.status === 401) {
+        window.location.href = '/login';
+      } else {
+        alert(`Không thể mở phiên chat: ${err.message}`);
+      }
     }
-
-    setView('chat');
-    navigate(`/teacher/chat/${studentId}`);
-  } catch (err) {
-    if (err.response?.status === 401) {
-      window.location.href = '/login';
-    } else {
-      alert(`Không thể mở phiên chat: ${err.message}`);
-    }
-  }
-};
-
+  };
 
   if (view === 'chat') {
     return (
@@ -172,12 +278,20 @@ const TeacherDashboard = ({ userId, aiEnabled, setAiEnabled, token, handleLogout
                 <td>{s.gvcn}</td>
                 <td>{formatDate(s.last_time)}</td>
                 <td>
-                  <span className={`status ${s.unread === 'Chưa đọc' ? 'unread' : 'read'}`}>
+                  <span
+                    className={`status ${
+                      s.unread === 'Chưa đọc' ? 'unread' : s.unread === 'Chưa nhắn' ? 'no-message' : 'read'
+                    }`}
+                  >
                     {s.unread}
                   </span>
                 </td>
                 <td>
-                  <button className="reply-btn" onClick={() => handleReply(s.id)}>
+                  <button
+                    className="reply-btn"
+                    onClick={() => handleReply(s.id)}
+                    disabled={!s.hasMessages}
+                  >
                     <FiMessageCircle size={16} /> Trả lời
                   </button>
                 </td>

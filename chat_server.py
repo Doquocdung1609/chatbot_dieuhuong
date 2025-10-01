@@ -108,6 +108,8 @@ cursor.execute("INSERT OR IGNORE INTO teachers (username, password) VALUES (?, ?
 conn.commit()
 
 connected_clients = {}  # {session_id: {user_id: [websocket]}}
+teacher_connections = {}
+
 
 class Message(BaseModel):
     session_id: int
@@ -239,6 +241,52 @@ async def get_teacher(teacher_id: int, token: str):
         return {"id": teacher[0], "username": teacher[1]}
     raise HTTPException(status_code=404, detail="Teacher not found")
 
+@app.websocket("/ws/teacher/{teacher_id}/{token}")
+async def teacher_websocket_endpoint(websocket: WebSocket, teacher_id: int, token: str):
+    user = verify_token(token)
+    if not user or user["user_type"] != "teacher" or user["user_id"] != teacher_id:
+        await websocket.close(code=1008)
+        print(f"WebSocket connection rejected: Invalid token or unauthorized for teacher_id {teacher_id}")
+        return
+
+    await websocket.accept()
+    print(f"WebSocket accepted for teacher_id: {teacher_id}")
+
+    if teacher_id not in teacher_connections:
+        teacher_connections[teacher_id] = []
+    teacher_connections[teacher_id].append(websocket)
+
+    try:
+        async def keep_alive():
+            while websocket.client_state == WebSocketState.CONNECTED:
+                try:
+                    await websocket.send_text(json.dumps({"type": "ping"}))
+                    print(f"Sent ping for teacher_id: {teacher_id}")
+                    await asyncio.sleep(30)
+                except Exception as e:
+                    print(f"Ping error for teacher_id {teacher_id}: {str(e)}")
+                    break
+
+        asyncio.create_task(keep_alive())
+
+        while True:
+            await websocket.receive_text()  # Giữ kết nối mở, xử lý ping/pong
+    except WebSocketDisconnect as e:
+        print(f"WebSocket disconnected for teacher_id {teacher_id}, code: {e.code}, reason: {e.reason}")
+        if teacher_id in teacher_connections:
+            if websocket in teacher_connections[teacher_id]:
+                teacher_connections[teacher_id].remove(websocket)
+            if not teacher_connections[teacher_id]:
+                del teacher_connections[teacher_id]
+    except Exception as e:
+        print(f"Unexpected error in WebSocket for teacher_id {teacher_id}: {str(e)}")
+    finally:
+        if teacher_id in teacher_connections:
+            if websocket in teacher_connections[teacher_id]:
+                teacher_connections[teacher_id].remove(websocket)
+            if not teacher_connections[teacher_id]:
+                del teacher_connections[teacher_id]
+
 
 @app.get("/sessions/{student_id}")
 async def get_sessions(student_id: int, token: str):
@@ -270,6 +318,39 @@ async def get_conversations(session_id: int, token: str):
                   (session_id,))
     messages = cursor.fetchall()
     return [{"role": m[0], "content": m[1], "timestamp": m[2]} for m in messages]
+
+async def broadcast_message_to_teachers(student_id: int, session_id: int, last_message_time: str):
+    print(f"Broadcasting new message to teachers: student_id={student_id}, session_id={session_id}, last_message_time={last_message_time}")
+    for teacher_id, clients in list(teacher_connections.items()):
+        for client_ws in clients[:]:
+            if client_ws.client_state == WebSocketState.CONNECTED:
+                for attempt in range(3):
+                    try:
+                        await client_ws.send_text(
+                            json.dumps(
+                                {
+                                    "type": "new_message",
+                                    "studentId": student_id,
+                                    "sessionId": session_id,
+                                    "lastMessageTime": last_message_time,
+                                },
+                                ensure_ascii=False,
+                            )
+                        )
+                        print(f"Sent new message to teacher_id: {teacher_id} for student_id: {student_id}")
+                        break
+                    except Exception as e:
+                        print(f"Attempt {attempt + 1} failed to send message to teacher_id {teacher_id}: {str(e)}")
+                        if attempt == 2:
+                            print(f"Removing disconnected client for teacher_id {teacher_id}")
+                            clients.remove(client_ws)
+            else:
+                print(f"Client not connected for teacher_id {teacher_id}")
+                clients.remove(client_ws)
+        teacher_connections[teacher_id] = [ws for ws in clients if ws.client_state == WebSocketState.CONNECTED]
+        if not teacher_connections[teacher_id]:
+            del teacher_connections[teacher_id]
+
 
 async def broadcast_message_to_clients(session_id: int, broadcast_message: dict):
     if session_id not in connected_clients:
@@ -309,6 +390,8 @@ async def broadcast_message_to_clients(session_id: int, broadcast_message: dict)
         connected_clients[session_id] = {uid: cls for uid, cls in connected_clients[session_id].items() if cls}
         if not connected_clients[session_id]:
             del connected_clients[session_id]
+            
+
 
 @app.post("/conversations")
 async def add_message(message: Message, token: str = Body(...)):
@@ -322,9 +405,18 @@ async def add_message(message: Message, token: str = Body(...)):
     )
     conn.commit()
     
-    print(f"Connected clients for session_id {message.session_id}: {connected_clients.get(message.session_id, {})}")
-    # Không broadcast lại tin nhắn người dùng, chỉ lưu vào database
-    if message.role != "user":
+    print(f"Saved message to database: session_id={message.session_id}, role={message.role}, content={message.content}")
+    # Broadcast thông báo tới giáo viên khi học sinh gửi tin nhắn
+    if message.role == "user":
+        cursor.execute("SELECT student_id FROM chat_sessions WHERE id = ?", (message.session_id,))
+        session = cursor.fetchone()
+        if session:
+            student_id = session[0]
+            print(f"Broadcasting new message for student_id={student_id}, session_id={message.session_id}")
+            await broadcast_message_to_teachers(student_id, message.session_id, message.timestamp)
+    
+    # Broadcast tin nhắn của giáo viên hoặc trợ lý tới client
+    if message.role in ["teacher", "assistant"]:
         broadcast_message = {
             "session_id": message.session_id,
             "role": message.role,
@@ -395,11 +487,24 @@ async def chatbot(request: ChatRequest = Body(...), token: str = Body(...)):
                 )
                 conn.commit()
                 print(f"Saved AI response to database for session_id: {request.session_id}")
+                # Broadcast tin nhắn AI tới client
+                broadcast_message = {
+                    "session_id": request.session_id,
+                    "role": "assistant",
+                    "content": full_reply,
+                    "timestamp": timestamp
+                }
+                await broadcast_message_to_clients(request.session_id, broadcast_message)
+                # Broadcast thông báo tới giáo viên
+                cursor.execute("SELECT student_id FROM chat_sessions WHERE id = ?", (request.session_id,))
+                session = cursor.fetchone()
+                if session:
+                    student_id = session[0]
+                    print(f"Broadcasting AI response to teachers for student_id={student_id}, session_id={request.session_id}")
+                    await broadcast_message_to_teachers(student_id, request.session_id, timestamp)
             except Exception as db_e:
                 print(f"Database error: {str(db_e)}")
                 raise HTTPException(status_code=500, detail=f"Database error: {str(db_e)}")
-            
-
         except Exception as e:
             error_msg = f"Error in chatbot streaming: {str(e)}"
             print(error_msg)

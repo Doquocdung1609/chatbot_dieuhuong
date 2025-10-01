@@ -250,9 +250,7 @@ const Chat = ({ mode, userId, studentId, token, currentSession, setCurrentSessio
         <div className="chat-header">
           {userInfo && (
             <span className="greeting">
-              {mode === 'Học sinh'
-                ? `Chào em ${userInfo.name} lớp ${userInfo.class}`
-                : `Chào giáo viên ${userInfo.username}`}
+              {`Chào em ${userInfo.name} lớp ${userInfo.class}`}
             </span>
           )}
           {mode === 'Giáo viên' && (
