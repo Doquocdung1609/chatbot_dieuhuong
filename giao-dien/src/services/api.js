@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://localhost:8000',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
 });
 
 export const studentRegister = (data) =>
@@ -35,7 +35,7 @@ export const getConversations = (sessionId, token) => api.get(`/conversations/${
 export const addMessage = (message, token) => api.post('/conversations', { message, token });
 
 export const sendToAI = (data, token) => {
-  return fetch('http://localhost:8000/chatbot', {
+  return fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/chatbot`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

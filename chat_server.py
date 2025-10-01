@@ -1,5 +1,5 @@
 import asyncio
-import sqlite3
+import psycopg2
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body, Query
 from fastapi.middleware.cors import CORSMiddleware
 import json
@@ -22,6 +22,28 @@ SECRET_KEY = os.environ.get("JWT_SECRET_KEY", secrets.token_hex(32))
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
+# Database Configuration
+DB_HOST = os.environ.get("DB_HOST")
+DB_PORT = os.environ.get("DB_PORT", "5432")
+DB_NAME = os.environ.get("DB_NAME")
+DB_USER = os.environ.get("DB_USER")
+DB_PASSWORD = os.environ.get("DB_PASSWORD")
+
+try:
+    conn = psycopg2.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        dbname=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+    cursor = conn.cursor()
+    print("Connected to PostgreSQL database")
+except Exception as e:
+    print(f"Failed to connect to database: {str(e)}")
+    raise
+
+# Initialize Groq client
 try:
     client = Groq(api_key=os.environ.get("OPENAI_API_KEY"))
     test_response = client.chat.completions.create(
@@ -38,78 +60,63 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:8501", "http://localhost:5173"],
+    allow_origins=["https://your-app.vercel.app", "http://localhost:3000", "http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-conn = sqlite3.connect('student_management.db', check_same_thread=False)
-cursor = conn.cursor()
-
 # Create tables
-cursor.execute('DROP TABLE IF EXISTS tokens')
-cursor.execute('DROP TABLE IF EXISTS conversations')
-cursor.execute('DROP TABLE IF EXISTS chat_sessions')
-cursor.execute('DROP TABLE IF EXISTS students')
-cursor.execute('''
+cursor.execute("""
 CREATE TABLE IF NOT EXISTS teachers (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     username TEXT UNIQUE,
     password TEXT NOT NULL
 )
-''')
-
-cursor.execute('''
+""")
+cursor.execute("""
 CREATE TABLE IF NOT EXISTS students (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     username TEXT UNIQUE,
     name TEXT,
     class TEXT,
     gvcn TEXT,
     password TEXT NOT NULL
 )
-''')
-
-cursor.execute('''
+""")
+cursor.execute("""
 CREATE TABLE IF NOT EXISTS chat_sessions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    student_id INTEGER,
+    id SERIAL PRIMARY KEY,
+    student_id INTEGER REFERENCES students(id),
     title TEXT,
-    created_at TEXT,
-    FOREIGN KEY (student_id) REFERENCES students(id)
+    created_at TEXT
 )
-''')
-
-cursor.execute('''
+""")
+cursor.execute("""
 CREATE TABLE IF NOT EXISTS conversations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    session_id INTEGER,
+    id SERIAL PRIMARY KEY,
+    session_id INTEGER REFERENCES chat_sessions(id),
     role TEXT,
     content TEXT,
     timestamp TEXT,
-    read_by_teacher INTEGER DEFAULT 0,
-    FOREIGN KEY (session_id) REFERENCES chat_sessions(id)
+    read_by_teacher INTEGER DEFAULT 0
 )
-''')
-
-cursor.execute('''
+""")
+cursor.execute("""
 CREATE TABLE IF NOT EXISTS tokens (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     user_id INTEGER,
-    user_type TEXT,  -- 'student' or 'teacher'
+    user_type TEXT,
     token TEXT UNIQUE,
-    expires_at TEXT,
-    FOREIGN KEY (user_id) REFERENCES students(id)
+    expires_at TEXT
 )
-''')
-cursor.execute("INSERT OR IGNORE INTO teachers (username, password) VALUES (?, ?)", 
-               ("teacher", "123456"))
+""")
+cursor.execute("INSERT INTO teachers (username, password) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                ("teacher", "123456"))
 conn.commit()
 
 connected_clients = {}  # {session_id: {user_id: [websocket]}}
 teacher_connections = {}
-
 
 class Message(BaseModel):
     session_id: int
@@ -161,8 +168,8 @@ def verify_token(token: str):
             print("Token validation failed: Missing user_id or user_type")
             return None
         user_id = int(user_id)
-        cursor.execute("SELECT token, expires_at FROM tokens WHERE token = ? AND user_id = ? AND user_type = ?", 
-                      (token, user_id, user_type))
+        cursor.execute("SELECT token, expires_at FROM tokens WHERE token = %s AND user_id = %s AND user_type = %s",
+                        (token, user_id, user_type))
         result = cursor.fetchone()
         if not result:
             print(f"Token not found in database: token={token}, user_id={user_id}, user_type={user_type}")
@@ -191,51 +198,51 @@ async def get_students(token: str):
 
 @app.post("/student_register")
 async def student_register(student: StudentRegister):
-    cursor.execute("SELECT username FROM students WHERE username = ?", (student.username,))
+    cursor.execute("SELECT username FROM students WHERE username = %s", (student.username,))
     if cursor.fetchone():
         raise HTTPException(status_code=400, detail="Số điện thoại đã được đăng ký")
     cursor.execute(
-        "INSERT INTO students (username, name, class, gvcn, password) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO students (username, name, class, gvcn, password) VALUES (%s, %s, %s, %s, %s) RETURNING id",
         (student.username, student.name, student.class_name, student.gvcn, student.password)
     )
+    student_id = cursor.fetchone()[0]
     conn.commit()
-    return {"id": cursor.lastrowid}
+    return {"id": student_id}
 
 @app.post("/student_login")
 async def student_login(student: StudentLogin):
-    cursor.execute("SELECT id FROM students WHERE username = ? AND password = ?", 
-                  (student.username, student.password))
+    cursor.execute("SELECT id FROM students WHERE username = %s AND password = %s",
+                    (student.username, student.password))
     result = cursor.fetchone()
     if result:
         user_id = result[0]
         token, expires_at = create_access_token({"sub": str(user_id), "type": "student"})
-        cursor.execute("INSERT INTO tokens (user_id, user_type, token, expires_at) VALUES (?, ?, ?, ?)",
-                      (user_id, "student", token, expires_at))
+        cursor.execute("INSERT INTO tokens (user_id, user_type, token, expires_at) VALUES (%s, %s, %s, %s)",
+                        (user_id, "student", token, expires_at))
         conn.commit()
         return {"id": user_id, "token": token}
     raise HTTPException(status_code=401, detail="Sai tài khoản hoặc mật khẩu")
 
 @app.post("/teacher_login")
 async def teacher_login(teacher: TeacherLogin):
-    cursor.execute("SELECT id FROM teachers WHERE username = ? AND password = ?", 
-                  (teacher.username, teacher.password))
+    cursor.execute("SELECT id FROM teachers WHERE username = %s AND password = %s",
+                    (teacher.username, teacher.password))
     result = cursor.fetchone()
     if result:
         user_id = result[0]
         token, expires_at = create_access_token({"sub": str(user_id), "type": "teacher"})
-        cursor.execute("INSERT INTO tokens (user_id, user_type, token, expires_at) VALUES (?, ?, ?, ?)",
-                      (user_id, "teacher", token, expires_at))
+        cursor.execute("INSERT INTO tokens (user_id, user_type, token, expires_at) VALUES (%s, %s, %s, %s)",
+                        (user_id, "teacher", token, expires_at))
         conn.commit()
         return {"id": user_id, "token": token}
-    else:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    
+    raise HTTPException(status_code=401, detail="Invalid credentials")
+
 @app.get("/teacher/{teacher_id}")
 async def get_teacher(teacher_id: int, token: str):
     user = verify_token(token)
     if not user or (user["user_type"] == "teacher" and user["user_id"] != teacher_id):
         raise HTTPException(status_code=401, detail="Unauthorized")
-    cursor.execute("SELECT id, username FROM teachers WHERE id = ?", (teacher_id,))
+    cursor.execute("SELECT id, username FROM teachers WHERE id = %s", (teacher_id,))
     teacher = cursor.fetchone()
     if teacher:
         return {"id": teacher[0], "username": teacher[1]}
@@ -270,7 +277,7 @@ async def teacher_websocket_endpoint(websocket: WebSocket, teacher_id: int, toke
         asyncio.create_task(keep_alive())
 
         while True:
-            await websocket.receive_text()  # Giữ kết nối mở, xử lý ping/pong
+            await websocket.receive_text()
     except WebSocketDisconnect as e:
         print(f"WebSocket disconnected for teacher_id {teacher_id}, code: {e.code}, reason: {e.reason}")
         if teacher_id in teacher_connections:
@@ -287,14 +294,13 @@ async def teacher_websocket_endpoint(websocket: WebSocket, teacher_id: int, toke
             if not teacher_connections[teacher_id]:
                 del teacher_connections[teacher_id]
 
-
 @app.get("/sessions/{student_id}")
 async def get_sessions(student_id: int, token: str):
     user = verify_token(token)
     if not user or (user["user_type"] == "student" and user["user_id"] != student_id):
         raise HTTPException(status_code=401, detail="Unauthorized")
-    cursor.execute("SELECT id, title, created_at FROM chat_sessions WHERE student_id = ? ORDER BY created_at DESC", 
-                  (student_id,))
+    cursor.execute("SELECT id, title, created_at FROM chat_sessions WHERE student_id = %s ORDER BY created_at DESC",
+                    (student_id,))
     sessions = cursor.fetchall()
     return [{"id": s[0], "title": s[1], "created_at": s[2]} for s in sessions]
 
@@ -304,30 +310,27 @@ async def create_session(session: dict = Body(...), token: str = Body(...)):
     if not user:
         raise HTTPException(status_code=401, detail="Unauthorized")
     timestamp = datetime.now(timezone.utc).isoformat()
-    cursor.execute("INSERT INTO chat_sessions (student_id, title, created_at) VALUES (?, ?, ?)",
-                   (session["student_id"], session["title"], timestamp))
+    cursor.execute("INSERT INTO chat_sessions (student_id, title, created_at) VALUES (%s, %s, %s) RETURNING id",
+                    (session["student_id"], session["title"], timestamp))
+    session_id = cursor.fetchone()[0]
     conn.commit()
-    return {"id": cursor.lastrowid}
+    return {"id": session_id}
 
 @app.delete("/sessions/{session_id}")
 async def delete_session(session_id: int, token: str = Query(...)):
     user = verify_token(token)
     if not user or user["user_type"] != "student":
         raise HTTPException(status_code=401, detail="Unauthorized")
-    
-    # Kiểm tra xem session có thuộc về học sinh không
-    cursor.execute("SELECT student_id FROM chat_sessions WHERE id = ?", (session_id,))
+
+    cursor.execute("SELECT student_id FROM chat_sessions WHERE id = %s", (session_id,))
     session = cursor.fetchone()
     if not session or session[0] != user["user_id"]:
         raise HTTPException(status_code=403, detail="Forbidden: You can only delete your own sessions")
-    
-    # Xóa các bản ghi trong conversations liên quan đến session
-    cursor.execute("DELETE FROM conversations WHERE session_id = ?", (session_id,))
-    # Xóa session khỏi chat_sessions
-    cursor.execute("DELETE FROM chat_sessions WHERE id = ?", (session_id,))
+
+    cursor.execute("DELETE FROM conversations WHERE session_id = %s", (session_id,))
+    cursor.execute("DELETE FROM chat_sessions WHERE id = %s", (session_id,))
     conn.commit()
-    
-    # Đóng tất cả WebSocket liên quan đến session_id
+
     if session_id in connected_clients:
         for user_id, clients in list(connected_clients[session_id].items()):
             for client_ws in clients[:]:
@@ -340,7 +343,7 @@ async def delete_session(session_id: int, token: str = Query(...)):
                 del connected_clients[session_id][user_id]
         if not connected_clients[session_id]:
             del connected_clients[session_id]
-    
+
     return {"status": "ok"}
 
 @app.get("/conversations/{session_id}")
@@ -348,8 +351,8 @@ async def get_conversations(session_id: int, token: str):
     user = verify_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    cursor.execute("SELECT role, content, timestamp FROM conversations WHERE session_id = ? ORDER BY timestamp", 
-                  (session_id,))
+    cursor.execute("SELECT role, content, timestamp FROM conversations WHERE session_id = %s ORDER BY timestamp",
+                    (session_id,))
     messages = cursor.fetchall()
     return [{"role": m[0], "content": m[1], "timestamp": m[2]} for m in messages]
 
@@ -385,16 +388,14 @@ async def broadcast_message_to_teachers(student_id: int, session_id: int, last_m
         if not teacher_connections[teacher_id]:
             del teacher_connections[teacher_id]
 
-
 async def broadcast_message_to_clients(session_id: int, broadcast_message: dict):
     if session_id not in connected_clients:
         print(f"No connected clients for session_id {session_id}")
         return
     print(f"Preparing to broadcast message: {broadcast_message}")
-    await asyncio.sleep(0.1)  # Small delay to allow connection stabilization
+    await asyncio.sleep(0.1)
 
-    # Lấy student_id từ chat_sessions
-    cursor.execute("SELECT student_id FROM chat_sessions WHERE id = ?", (session_id,))
+    cursor.execute("SELECT student_id FROM chat_sessions WHERE id = %s", (session_id,))
     session = cursor.fetchone()
     if not session:
         print(f"Session {session_id} not found")
@@ -402,7 +403,6 @@ async def broadcast_message_to_clients(session_id: int, broadcast_message: dict)
     student_id = session[0]
 
     for user_id, clients in list(connected_clients[session_id].items()):
-        # Chỉ gửi tin nhắn đến student_id hoặc giáo viên
         if user_id != student_id and broadcast_message["role"] != "teacher":
             print(f"Skipping broadcast to user_id {user_id} for session_id {session_id} (not student or teacher)")
             continue
@@ -424,8 +424,6 @@ async def broadcast_message_to_clients(session_id: int, broadcast_message: dict)
         connected_clients[session_id] = {uid: cls for uid, cls in connected_clients[session_id].items() if cls}
         if not connected_clients[session_id]:
             del connected_clients[session_id]
-            
-
 
 @app.post("/conversations")
 async def add_message(message: Message, token: str = Body(...)):
@@ -433,23 +431,21 @@ async def add_message(message: Message, token: str = Body(...)):
     if not user:
         raise HTTPException(status_code=401, detail="Unauthorized")
     cursor.execute(
-        "INSERT INTO conversations (session_id, role, content, timestamp, read_by_teacher) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO conversations (session_id, role, content, timestamp, read_by_teacher) VALUES (%s, %s, %s, %s, %s)",
         (message.session_id, message.role, message.content, message.timestamp,
-         1 if message.role in ["assistant", "teacher"] else 0)
+        1 if message.role in ["assistant", "teacher"] else 0)
     )
     conn.commit()
-    
+
     print(f"Saved message to database: session_id={message.session_id}, role={message.role}, content={message.content}")
-    # Broadcast thông báo tới giáo viên khi học sinh gửi tin nhắn
     if message.role == "user":
-        cursor.execute("SELECT student_id FROM chat_sessions WHERE id = ?", (message.session_id,))
+        cursor.execute("SELECT student_id FROM chat_sessions WHERE id = %s", (message.session_id,))
         session = cursor.fetchone()
         if session:
             student_id = session[0]
             print(f"Broadcasting new message for student_id={student_id}, session_id={message.session_id}")
             await broadcast_message_to_teachers(student_id, message.session_id, message.timestamp)
-    
-    # Broadcast tin nhắn của giáo viên hoặc trợ lý tới client
+
     if message.role in ["teacher", "assistant"]:
         broadcast_message = {
             "session_id": message.session_id,
@@ -458,7 +454,7 @@ async def add_message(message: Message, token: str = Body(...)):
             "timestamp": message.timestamp
         }
         await broadcast_message_to_clients(message.session_id, broadcast_message)
-    
+
     return {"status": "ok"}
 
 @app.post("/chatbot")
@@ -469,11 +465,11 @@ async def chatbot(request: ChatRequest = Body(...), token: str = Body(...)):
         raise HTTPException(status_code=401, detail="Unauthorized")
     if not request.ai_enabled:
         raise HTTPException(status_code=400, detail="AI is disabled")
-    
+
     if not client:
         print("Chatbot error: Groq client not initialized")
         raise HTTPException(status_code=500, detail="AI service unavailable")
-    
+
     system_prompt = {
         "role": "system",
         "content": """Bạn là **Cô Hương**, giáo viên Tin học cấp 3, chuyên dạy về an toàn thông tin. 
@@ -485,13 +481,13 @@ async def chatbot(request: ChatRequest = Body(...), token: str = Body(...)):
 - Luôn kết thúc bằng một **lời khuyên rõ ràng, dễ nhớ** cho học sinh, và xuống dòng giữa các đoạn để dễ đọc.
 """
     }
-    
+
     valid_roles = {"system", "user", "assistant"}
     messages = [system_prompt]
     for m in request.messages:
         role = m.role if m.role in valid_roles else "user"
         messages.append({"role": role, "content": m.content})
-    
+
     async def generate():
         full_reply = ""
         try:
@@ -516,12 +512,11 @@ async def chatbot(request: ChatRequest = Body(...), token: str = Body(...)):
             timestamp = datetime.now(timezone.utc).isoformat()
             try:
                 cursor.execute(
-                    "INSERT INTO conversations (session_id, role, content, timestamp, read_by_teacher) VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO conversations (session_id, role, content, timestamp, read_by_teacher) VALUES (%s, %s, %s, %s, %s)",
                     (request.session_id, "assistant", full_reply, timestamp, 1)
                 )
                 conn.commit()
                 print(f"Saved AI response to database for session_id: {request.session_id}")
-                # Broadcast tin nhắn AI tới client
                 broadcast_message = {
                     "session_id": request.session_id,
                     "role": "assistant",
@@ -529,8 +524,7 @@ async def chatbot(request: ChatRequest = Body(...), token: str = Body(...)):
                     "timestamp": timestamp
                 }
                 await broadcast_message_to_clients(request.session_id, broadcast_message)
-                # Broadcast thông báo tới giáo viên
-                cursor.execute("SELECT student_id FROM chat_sessions WHERE id = ?", (request.session_id,))
+                cursor.execute("SELECT student_id FROM chat_sessions WHERE id = %s", (request.session_id,))
                 session = cursor.fetchone()
                 if session:
                     student_id = session[0]
@@ -556,11 +550,11 @@ async def websocket_endpoint(websocket: WebSocket, session_id: int, token: str):
         await websocket.close(code=1008)
         print(f"WebSocket connection rejected: Invalid token for session_id {session_id}")
         return
-    
+
     user_id = user["user_id"]
     user_type = user["user_type"]
-    
-    cursor.execute("SELECT student_id FROM chat_sessions WHERE id = ?", (session_id,))
+
+    cursor.execute("SELECT student_id FROM chat_sessions WHERE id = %s", (session_id,))
     session = cursor.fetchone()
     if not session or (user_type == "student" and session[0] != user_id):
         await websocket.close(code=1008)
@@ -569,7 +563,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: int, token: str):
 
     await websocket.accept()
     print(f"WebSocket accepted for session_id: {session_id}, user_id: {user_id}")
-    
+
     if session_id not in connected_clients:
         connected_clients[session_id] = {}
     if user_id not in connected_clients[session_id]:
@@ -588,7 +582,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: int, token: str):
                     break
 
         asyncio.create_task(keep_alive())
-        
+
         while True:
             data = await websocket.receive_text()
             print(f"Received WebSocket message for session_id {session_id}, user_id {user_id}: {data}")
@@ -622,8 +616,8 @@ async def mark_read(session_id: int, token: str):
     user = verify_token(token)
     if not user or user["user_type"] != "teacher":
         raise HTTPException(status_code=401, detail="Unauthorized")
-    cursor.execute("UPDATE conversations SET read_by_teacher = 1 WHERE session_id = ? AND role = 'user' AND read_by_teacher = 0", 
-                  (session_id,))
+    cursor.execute("UPDATE conversations SET read_by_teacher = 1 WHERE session_id = %s AND role = 'user' AND read_by_teacher = 0",
+                    (session_id,))
     conn.commit()
     return {"status": "ok"}
 
@@ -634,7 +628,7 @@ async def get_unread(student_id: int, token: str):
         raise HTTPException(status_code=401, detail="Unauthorized")
     cursor.execute("""
     SELECT COUNT(*) FROM conversations 
-    WHERE session_id IN (SELECT id FROM chat_sessions WHERE student_id = ?) 
+    WHERE session_id IN (SELECT id FROM chat_sessions WHERE student_id = %s) 
     AND role = 'user' AND read_by_teacher = 0
     """, (student_id,))
     count = cursor.fetchone()[0]
@@ -647,7 +641,7 @@ async def get_last_message(student_id: int, token: str):
         raise HTTPException(status_code=401, detail="Unauthorized")
     cursor.execute("""
     SELECT MAX(timestamp) FROM conversations 
-    WHERE session_id IN (SELECT id FROM chat_sessions WHERE student_id = ?) 
+    WHERE session_id IN (SELECT id FROM chat_sessions WHERE student_id = %s) 
     AND role = 'user'
     """, (student_id,))
     result = cursor.fetchone()[0]
@@ -658,7 +652,7 @@ async def get_student(student_id: int, token: str):
     user = verify_token(token)
     if not user or (user["user_type"] == "student" and user["user_id"] != student_id):
         raise HTTPException(status_code=401, detail="Unauthorized")
-    cursor.execute("SELECT id, name, class, gvcn FROM students WHERE id = ?", (student_id,))
+    cursor.execute("SELECT id, name, class, gvcn FROM students WHERE id = %s", (student_id,))
     student = cursor.fetchone()
     if student:
         return {"id": student[0], "name": student[1], "class": student[2], "gvcn": student[3]}
@@ -669,8 +663,8 @@ async def get_latest_session(student_id: int, token: str):
     user = verify_token(token)
     if not user or (user["user_type"] == "student" and user["user_id"] != student_id):
         raise HTTPException(status_code=401, detail="Unauthorized")
-    cursor.execute("SELECT id FROM chat_sessions WHERE student_id = ? ORDER BY created_at DESC LIMIT 1", 
-                  (student_id,))
+    cursor.execute("SELECT id FROM chat_sessions WHERE student_id = %s ORDER BY created_at DESC LIMIT 1",
+                    (student_id,))
     session = cursor.fetchone()
     return {"session_id": session[0] if session else None}
 

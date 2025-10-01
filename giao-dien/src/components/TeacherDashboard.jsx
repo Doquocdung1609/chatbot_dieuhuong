@@ -12,6 +12,13 @@ import '../styles/teacher-dashboard.css';
 import { FiRefreshCcw, FiFilter, FiMessageCircle } from 'react-icons/fi';
 import { useNavigate, useLocation } from 'react-router-dom';
 
+const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+// Chuyển từ http:// sang ws://, và https:// sang wss://
+const wsUrl = backendUrl
+  .replace('https://', 'wss://')
+  .replace('http://', 'ws://');
+
 const formatDate = (isoString) => {
   if (!isoString || typeof isoString !== 'string') return 'Chưa có tin nhắn';
   const date = new Date(isoString);
@@ -98,7 +105,8 @@ const TeacherDashboard = ({ userId, aiEnabled, setAiEnabled, token, handleLogout
       console.log(`WebSocket already open for teacherId: ${userId}`);
       return;
     }
-    ws.current = new WebSocket(`ws://localhost:8000/ws/teacher/${userId}/${token}`);
+    ws.current = new WebSocket(`${wsUrl}/ws/teacher/${userId}/${token}`);
+
     ws.current.onopen = () => {
       console.log(`WebSocket connected for teacherId: ${userId}`);
       reconnectAttempts.current = 0;
