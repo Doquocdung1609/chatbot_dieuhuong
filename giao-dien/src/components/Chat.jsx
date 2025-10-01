@@ -260,8 +260,11 @@ const Chat = ({ mode, userId, studentId, token, currentSession, setCurrentSessio
       <div className={`chat-container ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="chat-header">
           {userInfo && (
-            <span className="greeting">
-              {`Chào em ${userInfo.name} lớp ${userInfo.class}`}
+            <span  className="greeting">
+              {mode === 'Học sinh'
+                ? `Chào em ${userInfo.name} lớp ${userInfo.class}`
+                : ``}
+
             </span>
           )}
           {mode === 'Giáo viên' && (
@@ -300,7 +303,7 @@ const Chat = ({ mode, userId, studentId, token, currentSession, setCurrentSessio
               {messages.map((msg, idx) => (
                 <div
                   key={`${msg.timestamp}-${idx}`}
-                  className={`chat-message ${msg.role === 'user' ? 'user' : msg.role === 'teacher' ? 'teacher' : 'assistant'}`}
+                  className={`chat-message ${msg.role === 'user' ? 'user' : 'assistant'}`}
                 >
                   {msg.role === 'user'
                     ? '👦 Học sinh: '

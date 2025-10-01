@@ -3,6 +3,7 @@ import { getSessions, createSession, deleteSession } from '../services/api';
 import { ChevronLeft, ChevronRight, LogOut, MessageSquare, Trash2 } from 'lucide-react';
 import '../styles/chat.css';
 import { useNavigate, useLocation } from 'react-router-dom';
+import ConfirmModal from './ConfirmModal';
 
 const Sidebar = ({
   studentId,
@@ -15,6 +16,8 @@ const Sidebar = ({
 }) => {
   const [sessions, setSessions] = useState([]);
   const [collapsed, setCollapsed] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [sessionToDelete, setSessionToDelete] = useState(null);
   const hasFetched = useRef(false);
   const hasCreatedInitialSession = useRef(false);
   const location = useLocation();
@@ -66,22 +69,27 @@ const Sidebar = ({
   };
 
   const deleteSessionHandler = async (sessionId) => {
-    if (!window.confirm('Bạn có chắc muốn xóa phiên chat này?')) return;
+    setSessionToDelete(sessionId);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!sessionToDelete) return;
 
     try {
-      await deleteSession(sessionId, token);
-      console.log('Deleted session:', sessionId);
+      await deleteSession(sessionToDelete, token);
+      console.log('Deleted session:', sessionToDelete);
 
-      // Cập nhật danh sách sessions
-      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      // Update session list
+      setSessions((prev) => prev.filter((s) => s.id !== sessionToDelete));
 
-      // Nếu session bị xóa là currentSession, chuyển về session mới nhất hoặc tạo mới
-      if (sessionId === currentSession) {
+      // If the deleted session is currentSession, switch to the latest session or create a new one
+      if (sessionToDelete === currentSession) {
         if (sessions.length > 1) {
-          const nextSession = sessions.find((s) => s.id !== sessionId);
+          const nextSession = sessions.find((s) => s.id !== sessionToDelete);
           setCurrentSession(nextSession ? nextSession.id : null);
         } else {
-          hasCreatedInitialSession.current = false; // Cho phép tạo session mới
+          hasCreatedInitialSession.current = false;
           setCurrentSession(null);
           createNewSession();
         }
@@ -90,7 +98,15 @@ const Sidebar = ({
       console.error('Delete session error:', err);
       if (err.response?.status === 401) window.location.href = '/login';
       else alert('Lỗi khi xóa phiên chat: ' + err.message);
+    } finally {
+      setShowDeleteModal(false);
+      setSessionToDelete(null);
     }
+  };
+
+  const cancelDelete = () => {
+    setShowDeleteModal(false);
+    setSessionToDelete(null);
   };
 
   const toggleSidebar = () => {
@@ -170,6 +186,13 @@ const Sidebar = ({
           )}
         </>
       )}
+
+      <ConfirmModal
+        show={showDeleteModal}
+        message="Bạn có chắc muốn xóa phiên chat này?"
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+      />
     </aside>
   );
 };
