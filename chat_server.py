@@ -555,17 +555,22 @@ async def websocket_endpoint(websocket: WebSocket, session_id: int, token: str):
     user = verify_token(token)
     if not user:
         await websocket.close(code=1008)
-        print(f"WebSocket connection rejected: Invalid token for session_id {session_id}")
+        print(f"WebSocket connection rejected: Invalid token for session_id {session_id}, token={token}")
         return
 
     user_id = user["user_id"]
     user_type = user["user_type"]
+    print(f"WebSocket attempt: session_id={session_id}, user_id={user_id}, user_type={user_type}")
 
     cursor.execute("SELECT student_id FROM chat_sessions WHERE id = %s", (session_id,))
     session = cursor.fetchone()
-    if not session or (user_type == "student" and session[0] != user_id):
+    if not session:
         await websocket.close(code=1008)
-        print(f"WebSocket connection rejected: Unauthorized access for session_id {session_id}, user_id {user_id}")
+        print(f"WebSocket connection rejected: Session not found for session_id {session_id}")
+        return
+    if user_type == "student" and session[0] != user_id:
+        await websocket.close(code=1008)
+        print(f"WebSocket connection rejected: Unauthorized access for session_id {session_id}, user_id {user_id}, session_student_id={session[0]}")
         return
 
     await websocket.accept()
