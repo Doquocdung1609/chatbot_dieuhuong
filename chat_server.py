@@ -458,21 +458,22 @@ async def add_message(message: Message, token: str = Body(...)):
     return {"status": "ok"}
 
 @app.post("/chatbot")
-async def chatbot(request: ChatRequest = Body(...), token: str = Body(...)):
+async def chatbot(request: ChatRequest = Body(...), token: str = Query(...)):
     print(f"Received /chatbot request: {request}, token: {token}")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    if not request.ai_enabled:
-        raise HTTPException(status_code=400, detail="AI is disabled")
+    try:
+        user = verify_token(token)
+        if not user:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        if not request.ai_enabled:
+            raise HTTPException(status_code=400, detail="AI is disabled")
 
-    if not client:
-        print("Chatbot error: Groq client not initialized")
-        raise HTTPException(status_code=500, detail="AI service unavailable")
+        if not client:
+            print("Chatbot error: Groq client not initialized")
+            raise HTTPException(status_code=500, detail="AI service unavailable")
 
-    system_prompt = {
-        "role": "system",
-        "content": """Bạn là **Cô Hương**, giáo viên Tin học cấp 3, chuyên dạy về an toàn thông tin. 
+        system_prompt = {
+            "role": "system",
+            "content": """Bạn là **Cô Hương**, giáo viên Tin học cấp 3, chuyên dạy về an toàn thông tin. 
 - Khi trả lời học sinh, luôn xưng "cô" và gọi người dùng là "em", tuyệt đối không dùng "mình", "tớ" hay "chúng ta". 
 - Giọng văn ấm áp, thân thiện, dí dỏm như cô giáo đang nói chuyện trực tiếp với học sinh. 
 - Giải thích ngắn gọn, dễ hiểu, ưu tiên ví dụ đời thường thay vì thuật ngữ phức tạp. 
@@ -480,68 +481,74 @@ async def chatbot(request: ChatRequest = Body(...), token: str = Body(...)):
 - Có thể thêm emoji 🙂😉🚀 để tạo cảm giác thân thiện. 
 - Luôn kết thúc bằng một **lời khuyên rõ ràng, dễ nhớ** cho học sinh, và xuống dòng giữa các đoạn để dễ đọc.
 """
-    }
+        }
 
-    valid_roles = {"system", "user", "assistant"}
-    messages = [system_prompt]
-    for m in request.messages:
-        role = m.role if m.role in valid_roles else "user"
-        messages.append({"role": role, "content": m.content})
+        valid_roles = {"system", "user", "assistant"}
+        messages = [system_prompt]
+        for m in request.messages:
+            role = m.role if m.role in valid_roles else "user"
+            messages.append({"role": role, "content": m.content})
 
-    async def generate():
-        full_reply = ""
-        try:
-            print(f"Starting Groq stream for session_id: {request.session_id}")
-            print(f"Messages sent to Groq: {json.dumps(messages, ensure_ascii=False)}")
-            stream = client.chat.completions.create(
-                model="openai/gpt-oss-120b",
-                messages=messages,
-                temperature=0.7,
-                max_tokens=1024,
-                top_p=1,
-                stream=True
-            )
-            for chunk in stream:
-                if chunk.choices[0].delta.content is not None:
-                    content = chunk.choices[0].delta.content
-                    full_reply += content
-                    print(f"Streaming chunk: {content}")
-                    yield f"data: {content}\n\n".encode('utf-8')
-                    await asyncio.sleep(0)
-            print(f"Full AI reply: {full_reply}")
-            timestamp = datetime.now(timezone.utc).isoformat()
+        async def generate():
+            full_reply = ""
             try:
-                cursor.execute(
-                    "INSERT INTO conversations (session_id, role, content, timestamp, read_by_teacher) VALUES (%s, %s, %s, %s, %s)",
-                    (request.session_id, "assistant", full_reply, timestamp, 1)
+                print(f"Starting Groq stream for session_id: {request.session_id}")
+                print(f"Messages sent to Groq: {json.dumps(messages, ensure_ascii=False)}")
+                stream = client.chat.completions.create(
+                    model="openai/gpt-oss-120b",
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=1024,
+                    top_p=1,
+                    stream=True
                 )
-                conn.commit()
-                print(f"Saved AI response to database for session_id: {request.session_id}")
-                broadcast_message = {
-                    "session_id": request.session_id,
-                    "role": "assistant",
-                    "content": full_reply,
-                    "timestamp": timestamp
-                }
-                await broadcast_message_to_clients(request.session_id, broadcast_message)
-                cursor.execute("SELECT student_id FROM chat_sessions WHERE id = %s", (request.session_id,))
-                session = cursor.fetchone()
-                if session:
-                    student_id = session[0]
-                    print(f"Broadcasting AI response to teachers for student_id={student_id}, session_id={request.session_id}")
-                    await broadcast_message_to_teachers(student_id, request.session_id, timestamp)
-            except Exception as db_e:
-                print(f"Database error: {str(db_e)}")
-                raise HTTPException(status_code=500, detail=f"Database error: {str(db_e)}")
-        except Exception as e:
-            error_msg = f"Error in chatbot streaming: {str(e)}"
-            print(error_msg)
-            yield f"data: {error_msg}\n\n".encode('utf-8')
-            if "400" in str(e):
-                raise HTTPException(status_code=400, detail=f"Invalid request to AI: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"AI processing failed: {str(e)}")
+                for chunk in stream:
+                    if chunk.choices[0].delta.content is not None:
+                        content = chunk.choices[0].delta.content
+                        full_reply += content
+                        print(f"Streaming chunk: {content}")
+                        yield f"data: {content}\n\n".encode('utf-8')
+                        await asyncio.sleep(0)
+                print(f"Full AI reply: {full_reply}")
+                timestamp = datetime.now(timezone.utc).isoformat()
+                try:
+                    cursor.execute(
+                        "INSERT INTO conversations (session_id, role, content, timestamp, read_by_teacher) VALUES (%s, %s, %s, %s, %s)",
+                        (request.session_id, "assistant", full_reply, timestamp, 1)
+                    )
+                    conn.commit()
+                    print(f"Saved AI response to database for session_id: {request.session_id}")
+                    broadcast_message = {
+                        "session_id": request.session_id,
+                        "role": "assistant",
+                        "content": full_reply,
+                        "timestamp": timestamp
+                    }
+                    await broadcast_message_to_clients(request.session_id, broadcast_message)
+                    cursor.execute("SELECT student_id FROM chat_sessions WHERE id = %s", (request.session_id,))
+                    session = cursor.fetchone()
+                    if session:
+                        student_id = session[0]
+                        print(f"Broadcasting AI response to teachers for student_id={student_id}, session_id={request.session_id}")
+                        await broadcast_message_to_teachers(student_id, request.session_id, timestamp)
+                except Exception as db_e:
+                    print(f"Database error: {str(db_e)}")
+                    raise HTTPException(status_code=500, detail=f"Database error: {str(db_e)}")
+            except Exception as e:
+                error_msg = f"Error in chatbot streaming: {str(e)}"
+                print(error_msg)
+                yield f"data: {error_msg}\n\n".encode('utf-8')
+                if "400" in str(e):
+                    raise HTTPException(status_code=400, detail=f"Invalid request to AI: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"AI processing failed: {str(e)}")
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+        return StreamingResponse(generate(), media_type="text/event-stream")
+    except HTTPException as http_exc:
+        print(f"HTTPException in /chatbot: {str(http_exc)}")
+        raise
+    except Exception as e:
+        print(f"Validation error in /chatbot: {str(e)}")
+        raise HTTPException(status_code=422, detail=f"Invalid request body: {str(e)}")
 
 @app.websocket("/ws/{session_id}/{token}")
 async def websocket_endpoint(websocket: WebSocket, session_id: int, token: str):
