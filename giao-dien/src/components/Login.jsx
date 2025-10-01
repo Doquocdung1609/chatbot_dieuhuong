@@ -30,7 +30,12 @@ function Login({ onLogin }) {
   return (
     <div className="auth-wrapper">
       <div className="auth-card">
+        <div className="auth-header">
+          <h1 className="auth-brand">Chatbot Cô Hương</h1>
+        </div>
+
         <h2 className="auth-title">Đăng nhập</h2>
+
         <form onSubmit={handleSubmit} className="auth-form">
           <select value={mode} onChange={(e) => setMode(e.target.value)} className="auth-input">
             <option value="Học sinh">Học sinh</option>
