@@ -25,7 +25,7 @@ const formatDate = (isoString) => {
   }).replace(',', '');
 };
 
-const TeacherDashboard = ({ userId, aiEnabled, setAiEnabled, token, handleLogout }) => {
+const TeacherDashboard = ({ userId, aiEnabled, setAiEnabled, token, handleLogout, sidebarCollapsed }) => {
   const [students, setStudents] = useState([]);
   const [filters, setFilters] = useState({ name: '', class: '', gvcn: '' });
   const [view, setView] = useState('home');
@@ -89,7 +89,6 @@ const TeacherDashboard = ({ userId, aiEnabled, setAiEnabled, token, handleLogout
     }
   };
 
-  // Kết nối WebSocket để nhận thông báo tin nhắn mới
   const connectWebSocket = () => {
     if (!token || !userId) {
       console.log('Missing token or userId, skipping WebSocket connection');
@@ -110,7 +109,6 @@ const TeacherDashboard = ({ userId, aiEnabled, setAiEnabled, token, handleLogout
         console.log('WebSocket received:', data);
         if (data.type === 'ping') return;
 
-        // Cập nhật state students khi nhận tin nhắn mới
         if (data.type === 'new_message') {
           const { studentId, sessionId, lastMessageTime } = data;
           setStudents((prev) =>
@@ -182,7 +180,6 @@ const TeacherDashboard = ({ userId, aiEnabled, setAiEnabled, token, handleLogout
         await markRead(session.id, token);
       }
 
-      // Cập nhật trạng thái "Đã đọc" sau khi nhấn "Trả lời"
       setStudents((prev) =>
         prev.map((s) =>
           s.id === studentId ? { ...s, unread: 'Đã đọc' } : s
@@ -211,12 +208,13 @@ const TeacherDashboard = ({ userId, aiEnabled, setAiEnabled, token, handleLogout
         currentSession={currentSession}
         setCurrentSession={setCurrentSession}
         aiEnabled={aiEnabled}
+        sidebarCollapsed={sidebarCollapsed} // Truyền sidebarCollapsed
       />
     );
   }
 
   return (
-    <div className="teacher-dashboard">
+    <div className={`teacher-dashboard ${sidebarCollapsed ? 'collapsed' : ''}`}>
       <div className="dashboard-header">
         <h1>📚 Chatbot Cô Hương - Chế độ Giáo viên</h1>
         <div className="header-actions">

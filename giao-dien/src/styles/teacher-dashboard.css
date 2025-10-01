@@ -1,13 +1,20 @@
+:root {
+  --sidebar-width: 17rem;
+  --sidebar-collapsed-width: 70px;
+}
+
 .teacher-dashboard {
   padding: 2rem;
   background: #f8fafc;
   min-height: 100vh;
   color: #1e293b;
   font-family: 'Inter', sans-serif;
-
-  /* ✅ Thêm phần này để tránh bị sidebar che */
   margin-left: var(--sidebar-width);
   transition: margin-left 0.3s ease;
+}
+
+.teacher-dashboard.collapsed {
+  margin-left: var(--sidebar-collapsed-width);
 }
 
 /* Header */
@@ -137,7 +144,6 @@
   border-radius: 4px;
 }
 
-
 /* Buttons */
 .reply-btn {
   background: #10b981;
@@ -160,8 +166,4 @@
   background-color: #cccccc;
   cursor: not-allowed;
   opacity: 0.6;
-}
-
-.sidebar-container.collapsed ~ .teacher-dashboard {
-  margin-left: var(--sidebar-collapsed-width);
 }

@@ -76,11 +76,11 @@ function AppContent({
           setCurrentSession={setCurrentSession}
           handleLogout={handleLogout}
           isTeacher={mode === 'Giáo viên'}
-          setCollapsedGlobal={setSidebarCollapsed}   // 👈 truyền xuống Sidebar
+          setCollapsedGlobal={setSidebarCollapsed}
         />
       )}
 
-      <main className={`main-content ${userId && token ? 'ml-64' : ''} p-6 w-full`}>
+      <main className={`main-content ${sidebarCollapsed ? 'ml-collapsed' : 'ml-expanded'} p-6 w-full`}>
         <Routes>
           <Route path="/login" element={<Login onLogin={handleLogin} mode={mode} />} />
           <Route path="/register" element={<Register />} />
@@ -96,6 +96,7 @@ function AppContent({
                   aiEnabled={aiEnabled}
                   currentSession={currentSession}
                   setCurrentSession={setCurrentSession}
+                  sidebarCollapsed={sidebarCollapsed} // Truyền sidebarCollapsed
                 />
               ) : (
                 <Navigate to="/login" />
@@ -115,6 +116,7 @@ function AppContent({
                   currentSession={currentSession}
                   setCurrentSession={setCurrentSession}
                   handleLogout={handleLogout}
+                  sidebarCollapsed={sidebarCollapsed} // Truyền sidebarCollapsed
                 />
               ) : (
                 <Navigate to="/login" />
@@ -140,7 +142,6 @@ function AppContent({
             }
           />
 
-          {/* Mặc định điều hướng về login */}
           <Route path="*" element={<Navigate to="/login" />} />
         </Routes>
       </main>
