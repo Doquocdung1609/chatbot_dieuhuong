@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { getSessions, createSession } from '../services/api';
-import { ChevronLeft, ChevronRight, PlusCircle, LogOut, MessageSquare } from 'lucide-react';
+import { getSessions, createSession, deleteSession } from '../services/api';
+import { ChevronLeft, ChevronRight, LogOut, MessageSquare, Trash2 } from 'lucide-react';
 import '../styles/chat.css';
-import { useNavigate, useLocation } from 'react-router-dom'; // Thêm useNavigate
+import { useNavigate, useLocation } from 'react-router-dom';
 
 const Sidebar = ({
   studentId,
@@ -11,7 +11,7 @@ const Sidebar = ({
   setCurrentSession,
   handleLogout,
   isTeacher = false,
-  setCollapsedGlobal,   // 🔹 thêm prop để báo cho Chat biết
+  setCollapsedGlobal,
 }) => {
   const [sessions, setSessions] = useState([]);
   const [collapsed, setCollapsed] = useState(false);
@@ -22,32 +22,32 @@ const Sidebar = ({
 
   const isTeacherChatPage = location.pathname.startsWith('/teacher/chat');
 
-useEffect(() => {
-  if (token && studentId && !hasFetched.current) {
-    hasFetched.current = true;
-    fetchSessions();
-  }
-}, [studentId, token]);
-
-const fetchSessions = async () => {
-  try {
-    const res = await getSessions(studentId, token);
-    console.log('Fetched sessions:', res.data);
-    setSessions(res.data);
-
-    if (res.data.length > 0) {
-      const latestSession = res.data[0].id; // Luôn đặt về session mới nhất khi tải danh sách
-      console.log('Setting currentSession to latest:', latestSession);
-      setCurrentSession(latestSession);
-    } else if (!hasCreatedInitialSession.current) {
-      hasCreatedInitialSession.current = true;
-      createNewSession();
+  useEffect(() => {
+    if (token && studentId && !hasFetched.current) {
+      hasFetched.current = true;
+      fetchSessions();
     }
-  } catch (err) {
-    console.error('Fetch sessions error:', err);
-    if (err.response?.status === 401) window.location.href = '/login';
-  }
-};
+  }, [studentId, token]);
+
+  const fetchSessions = async () => {
+    try {
+      const res = await getSessions(studentId, token);
+      console.log('Fetched sessions:', res.data);
+      setSessions(res.data);
+
+      if (res.data.length > 0) {
+        const latestSession = res.data[0].id;
+        console.log('Setting currentSession to latest:', latestSession);
+        setCurrentSession(latestSession);
+      } else if (!hasCreatedInitialSession.current) {
+        hasCreatedInitialSession.current = true;
+        createNewSession();
+      }
+    } catch (err) {
+      console.error('Fetch sessions error:', err);
+      if (err.response?.status === 401) window.location.href = '/login';
+    }
+  };
 
   const createNewSession = async () => {
     try {
@@ -65,14 +65,42 @@ const fetchSessions = async () => {
     }
   };
 
+  const deleteSessionHandler = async (sessionId) => {
+    if (!window.confirm('Bạn có chắc muốn xóa phiên chat này?')) return;
+
+    try {
+      await deleteSession(sessionId, token);
+      console.log('Deleted session:', sessionId);
+
+      // Cập nhật danh sách sessions
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+
+      // Nếu session bị xóa là currentSession, chuyển về session mới nhất hoặc tạo mới
+      if (sessionId === currentSession) {
+        if (sessions.length > 1) {
+          const nextSession = sessions.find((s) => s.id !== sessionId);
+          setCurrentSession(nextSession ? nextSession.id : null);
+        } else {
+          hasCreatedInitialSession.current = false; // Cho phép tạo session mới
+          setCurrentSession(null);
+          createNewSession();
+        }
+      }
+    } catch (err) {
+      console.error('Delete session error:', err);
+      if (err.response?.status === 401) window.location.href = '/login';
+      else alert('Lỗi khi xóa phiên chat: ' + err.message);
+    }
+  };
+
   const toggleSidebar = () => {
     setCollapsed(!collapsed);
-    setCollapsedGlobal && setCollapsedGlobal(!collapsed); // 🔹 báo trạng thái ra ngoài
+    setCollapsedGlobal && setCollapsedGlobal(!collapsed);
   };
 
   const onLogout = () => {
-    handleLogout(); // Gọi hàm handleLogout để reset state
-    navigate('/login'); // Điều hướng về trang đăng nhập
+    handleLogout();
+    navigate('/login');
   };
 
   return (
@@ -90,13 +118,13 @@ const fetchSessions = async () => {
       {!collapsed && (
         <>
           {studentId && (
-            <button className="logout-btn" onClick={handleLogout}>
+            <button className="logout-btn" onClick={onLogout}>
               <LogOut size={18} />
               <span>Đăng xuất</span>
             </button>
           )}
 
-            {(!isTeacher || isTeacherChatPage) && (
+          {(!isTeacher || isTeacherChatPage) && (
             <div className="session-section">
               <h4 className="section-title">
                 {isTeacher ? 'Phiên chat của học sinh' : 'Lịch sử trò chuyện'}
@@ -116,12 +144,24 @@ const fetchSessions = async () => {
                     <div
                       key={s.id}
                       className={`session-item ${currentSession === s.id ? 'active' : ''}`}
-                      onClick={() => {
-                        console.log('Clicked session:', s.id); // Debug
-                        setCurrentSession(s.id);
-                      }}
                     >
-                      <span>{s.title}</span>
+                      <span
+                        onClick={() => {
+                          console.log('Clicked session:', s.id);
+                          setCurrentSession(s.id);
+                        }}
+                      >
+                        {s.title}
+                      </span>
+                      {!isTeacher && (
+                        <button
+                          className="delete-session-btn"
+                          onClick={() => deleteSessionHandler(s.id)}
+                          title="Xóa phiên chat"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                     </div>
                   ))
                 )}

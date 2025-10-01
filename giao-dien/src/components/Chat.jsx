@@ -1,22 +1,21 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getConversations, addMessage, sendToAI, getStudent, getTeacher } from '../services/api';
+import { getConversations, addMessage, sendToAI, getStudent } from '../services/api';
 import '../styles/chat.css';
 import { marked } from 'marked';
 
-const Chat = ({ mode, userId, studentId, token, currentSession, setCurrentSession, aiEnabled }) => {
+const Chat = ({ mode, userId, studentId, token, currentSession, setCurrentSession, aiEnabled, sidebarCollapsed }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isAiResponding, setIsAiResponding] = useState(false);
-  const [userInfo, setUserInfo] = useState(null); // State lưu thông tin người dùng
+  const [userInfo, setUserInfo] = useState(null);
   const ws = useRef(null);
   const reconnectAttempts = useRef(0);
   const maxReconnectAttempts = 5;
   const navigate = useNavigate();
   const sessionRef = useRef(currentSession);
 
-  // Lấy thông tin người dùng khi component mount
   useEffect(() => {
     const fetchUserInfo = async () => {
       try {
@@ -33,7 +32,7 @@ const Chat = ({ mode, userId, studentId, token, currentSession, setCurrentSessio
       }
     };
     if (userId && token) fetchUserInfo();
-  }, [userId, token, mode, navigate]);
+  }, [userId, token, mode, navigate, studentId]);
 
   const connectWebSocket = () => {
     if (!currentSession || !token) {
@@ -74,13 +73,15 @@ const Chat = ({ mode, userId, studentId, token, currentSession, setCurrentSessio
       }
     };
     ws.current.onclose = (event) => {
-      if (event.code === 1008 && mode === 'Học sinh') {
+      console.log(`WebSocket closed for session_id ${currentSession}:`, event);
+      if (event.code === 1008) {
         navigate('/login');
         return;
       }
       if (reconnectAttempts.current < maxReconnectAttempts) {
         setTimeout(() => {
           reconnectAttempts.current += 1;
+          console.log(`Reconnecting WebSocket, attempt ${reconnectAttempts.current}`);
           connectWebSocket();
         }, 1000 * (reconnectAttempts.current + 1));
       } else {
@@ -103,42 +104,47 @@ const Chat = ({ mode, userId, studentId, token, currentSession, setCurrentSessio
   };
 
   useEffect(() => {
-  if (!currentSession && mode === 'Học sinh') return;
-  if (currentSession && token) {
-    if (sessionRef.current !== currentSession) {
-      if (ws.current && ws.current.readyState === WebSocket.OPEN) ws.current.close();
-      sessionRef.current = currentSession;
-      reconnectAttempts.current = 0;
+    if (!currentSession && mode === 'Học sinh') {
+      setMessages([]);
+      setIsLoading(false);
+      return;
     }
-    setIsLoading(true);
-    const timeout = setTimeout(() => {
-      connectWebSocket();
-      getConversations(currentSession, token)
-        .then((res) => {
-          const uniqueMessages = res.data.filter(
-            (msg, index, self) =>
-              index === self.findIndex((m) => m.timestamp === msg.timestamp && m.content === msg.content)
-          );
-          setMessages(uniqueMessages.map((msg) => ({
-            ...msg,
-            content: msg.content.replace('<br>', '\n'),
-            rendered: marked.parse(msg.content)
-          })));
-          setIsLoading(false);
-        })
-        .catch((err) => {
-          setIsLoading(false);
-          if (err.response?.status === 401) navigate('/login');
-        });
-    }, 500);
-    return () => {
-      clearTimeout(timeout);
-      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-        ws.current.close();
+    if (currentSession && token) {
+      if (sessionRef.current !== currentSession) {
+        if (ws.current && ws.current.readyState === WebSocket.OPEN) ws.current.close();
+        sessionRef.current = currentSession;
+        reconnectAttempts.current = 0;
       }
-    };
-  }
-}, [currentSession, token, mode, studentId, navigate]); // Thêm studentId vào dependency array
+      setIsLoading(true);
+      const timeout = setTimeout(() => {
+        connectWebSocket();
+        getConversations(currentSession, token)
+          .then((res) => {
+            const uniqueMessages = res.data.filter(
+              (msg, index, self) =>
+                index === self.findIndex((m) => m.timestamp === msg.timestamp && m.content === msg.content)
+            );
+            setMessages(uniqueMessages.map((msg) => ({
+              ...msg,
+              content: msg.content.replace('<br>', '\n'),
+              rendered: marked.parse(msg.content)
+            })));
+            setIsLoading(false);
+          })
+          .catch((err) => {
+            console.error('Fetch conversations error:', err);
+            setIsLoading(false);
+            if (err.response?.status === 401) navigate('/login');
+          });
+      }, 500);
+      return () => {
+        clearTimeout(timeout);
+        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+          ws.current.close();
+        }
+      };
+    }
+  }, [currentSession, token, mode, studentId, navigate]);
 
   marked.setOptions({
     breaks: true,
@@ -147,7 +153,12 @@ const Chat = ({ mode, userId, studentId, token, currentSession, setCurrentSessio
   });
 
   const handleSend = async () => {
-    if (!input || !currentSession || !token || !ws.current || ws.current.readyState !== WebSocket.OPEN) return;
+    if (!input || !currentSession || !token || !ws.current || ws.current.readyState !== WebSocket.OPEN) {
+      if (!currentSession) {
+        alert('Vui lòng chọn hoặc tạo một phiên chat mới.');
+      }
+      return;
+    }
     const timestamp = new Date().toISOString();
     const message = {
       session_id: currentSession,
@@ -246,7 +257,7 @@ const Chat = ({ mode, userId, studentId, token, currentSession, setCurrentSessio
 
   return (
     <div className="main">
-      <div className="chat-container">
+      <div className={`chat-container ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="chat-header">
           {userInfo && (
             <span className="greeting">
@@ -255,27 +266,31 @@ const Chat = ({ mode, userId, studentId, token, currentSession, setCurrentSessio
           )}
           {mode === 'Giáo viên' && (
             <button
-  className="back-btn"
-  onClick={() => {
-    try {
-      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-        ws.current.onclose = null;
-        ws.current.close();
-      }
-    } catch (e) {
-      console.warn("WebSocket close error:", e);
-    }
-    navigate('/teacher', { replace: true });
-  }}
->
-  ⬅ Quay lại
-</button>
-
+              className="back-btn"
+              onClick={() => {
+                try {
+                  if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+                    ws.current.onclose = null;
+                    ws.current.close();
+                  }
+                } catch (e) {
+                  console.warn("WebSocket close error:", e);
+                }
+                navigate('/teacher', { replace: true });
+              }}
+            >
+              ⬅ Quay lại
+            </button>
           )}
         </div>
         <div className="chat-window">
           {isLoading ? (
             <div className="text-center text-gray-500">Đang tải tin nhắn...</div>
+          ) : !currentSession ? (
+            <div className="flex flex-col items-center justify-center h-full text-gray-500">
+              <p className="text-lg font-medium">Hôm nay em muốn hỏi cô Hương gì nhỉ? 😊</p>
+              <p>Tạo một phiên chat mới để bắt đầu!</p>
+            </div>
           ) : messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-500">
               <p className="text-lg font-medium">Hôm nay em muốn hỏi cô Hương gì nhỉ? 😊</p>
@@ -285,7 +300,7 @@ const Chat = ({ mode, userId, studentId, token, currentSession, setCurrentSessio
               {messages.map((msg, idx) => (
                 <div
                   key={`${msg.timestamp}-${idx}`}
-                  className={`chat-message ${msg.role === 'user' ? 'user' : 'assistant'}`}
+                  className={`chat-message ${msg.role === 'user' ? 'user' : msg.role === 'teacher' ? 'teacher' : 'assistant'}`}
                 >
                   {msg.role === 'user'
                     ? '👦 Học sinh: '
@@ -313,13 +328,15 @@ const Chat = ({ mode, userId, studentId, token, currentSession, setCurrentSessio
             onChange={(e) => setInput(e.target.value)}
             placeholder={mode === 'Học sinh' ? 'Nhập câu hỏi...' : 'Nhập tin nhắn...'}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+            disabled={!currentSession}
           />
-          <button className="send" onClick={handleSend} disabled={isAiResponding}>
+          <button className="send" onClick={handleSend} disabled={isAiResponding || !currentSession}>
             Gửi
           </button>
           <button
             className="refresh"
             onClick={() => {
+              if (!currentSession) return;
               setIsLoading(true);
               getConversations(currentSession, token)
                 .then((res) => {
@@ -339,6 +356,7 @@ const Chat = ({ mode, userId, studentId, token, currentSession, setCurrentSessio
                   setIsLoading(false);
                 });
             }}
+            disabled={!currentSession}
           >
             Refresh
           </button>

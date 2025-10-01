@@ -133,7 +133,25 @@
   cursor: pointer;
   font-size: 14px;
   transition: background 0.2s ease, transform 0.1s;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
+
+.delete-session-btn {
+  background: none;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  padding: 4px;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+.delete-session-btn:hover {
+  opacity: 1;
+}
+
 .session-item:hover {
   background: #e5e7eb;
   transform: scale(1.01);

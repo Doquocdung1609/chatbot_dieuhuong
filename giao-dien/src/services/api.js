@@ -58,3 +58,5 @@ export const getLastMessage = (studentId, token) => api.get(`/last_message/${stu
 export const getStudent = (studentId, token) => api.get(`/student/${studentId}`, { params: { token } });
 
 export const getLatestSession = (studentId, token) => api.get(`/student/${studentId}/latest_session`, { params: { token } });
+
+export const deleteSession = (sessionId, token) => api.delete(`/sessions/${sessionId}`, { params: { token } });

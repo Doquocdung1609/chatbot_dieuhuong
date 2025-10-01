@@ -309,6 +309,40 @@ async def create_session(session: dict = Body(...), token: str = Body(...)):
     conn.commit()
     return {"id": cursor.lastrowid}
 
+@app.delete("/sessions/{session_id}")
+async def delete_session(session_id: int, token: str = Query(...)):
+    user = verify_token(token)
+    if not user or user["user_type"] != "student":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    # Kiểm tra xem session có thuộc về học sinh không
+    cursor.execute("SELECT student_id FROM chat_sessions WHERE id = ?", (session_id,))
+    session = cursor.fetchone()
+    if not session or session[0] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Forbidden: You can only delete your own sessions")
+    
+    # Xóa các bản ghi trong conversations liên quan đến session
+    cursor.execute("DELETE FROM conversations WHERE session_id = ?", (session_id,))
+    # Xóa session khỏi chat_sessions
+    cursor.execute("DELETE FROM chat_sessions WHERE id = ?", (session_id,))
+    conn.commit()
+    
+    # Đóng tất cả WebSocket liên quan đến session_id
+    if session_id in connected_clients:
+        for user_id, clients in list(connected_clients[session_id].items()):
+            for client_ws in clients[:]:
+                try:
+                    await client_ws.close(code=1000, reason="Session deleted")
+                    clients.remove(client_ws)
+                except Exception as e:
+                    print(f"Error closing WebSocket for session_id {session_id}, user_id {user_id}: {str(e)}")
+            if not clients:
+                del connected_clients[session_id][user_id]
+        if not connected_clients[session_id]:
+            del connected_clients[session_id]
+    
+    return {"status": "ok"}
+
 @app.get("/conversations/{session_id}")
 async def get_conversations(session_id: int, token: str):
     user = verify_token(token)
