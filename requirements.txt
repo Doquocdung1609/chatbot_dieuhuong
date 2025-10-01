@@ -1,6 +1,6 @@
 fastapi==0.115.0 
 uvicorn[standard]==0.30.6 
-psycopg2==3.2.1
+psycopg2
 groq==0.11.0 
 python-jose==3.3.0 
 python-dotenv==1.0.1
