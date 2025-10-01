@@ -458,7 +458,7 @@ async def add_message(message: Message, token: str = Body(...)):
     return {"status": "ok"}
 
 @app.post("/chatbot")
-async def chatbot(request: ChatRequest = Body(...), token: str = Body(...)):
+async def chatbot(request: ChatRequest = Body(...), token: str = Query(...)):
     print(f"Received /chatbot request: {request}, token: {token}")
     user = verify_token(token)
     if not user:
