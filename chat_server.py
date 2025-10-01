@@ -1,5 +1,5 @@
 import asyncio
-import psycopg
+import psycopg  # Changed from psycopg2
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body, Query
 from fastapi.middleware.cors import CORSMiddleware
 import json
@@ -30,7 +30,7 @@ DB_USER = os.environ.get("DB_USER")
 DB_PASSWORD = os.environ.get("DB_PASSWORD")
 
 try:
-    conn = psycopg.connect(
+    conn = psycopg.connect(  # Changed from psycopg2.connect
         host=DB_HOST,
         port=DB_PORT,
         dbname=DB_NAME,
@@ -47,7 +47,7 @@ except Exception as e:
 try:
     client = Groq(api_key=os.environ.get("OPENAI_API_KEY"))
     test_response = client.chat.completions.create(
-        model="mixtral-8x7b-32768",  # Updated to a valid Groq model
+        model="openai/gpt-oss-120b",
         messages=[{"role": "user", "content": "test"}],
         max_tokens=10
     )
@@ -60,12 +60,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://your-app.vercel.app",
-        "https://chatbot-dieuhuong.vercel.app",  # Add your Vercel frontend URL
-        "http://localhost:3000",
-        "http://localhost:5173"
-    ],
+    allow_origins=["https://your-app.vercel.app", "http://localhost:3000", "http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -499,7 +494,7 @@ async def chatbot(request: ChatRequest = Body(...), token: str = Body(...)):
             print(f"Starting Groq stream for session_id: {request.session_id}")
             print(f"Messages sent to Groq: {json.dumps(messages, ensure_ascii=False)}")
             stream = client.chat.completions.create(
-                model="mixtral-8x7b-32768",  # Updated to a valid Groq model
+                model="openai/gpt-oss-120b",
                 messages=messages,
                 temperature=0.7,
                 max_tokens=1024,
