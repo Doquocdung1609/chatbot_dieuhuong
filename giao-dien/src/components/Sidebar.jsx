@@ -32,12 +32,14 @@ useEffect(() => {
 const fetchSessions = async () => {
   try {
     const res = await getSessions(studentId, token);
+    console.log('Fetched sessions:', res.data);
     setSessions(res.data);
 
-    if (res.data.length > 0 && !currentSession) {
-      const latestSession = res.data[0].id; // Chọn session mới nhất
+    if (res.data.length > 0) {
+      const latestSession = res.data[0].id; // Luôn đặt về session mới nhất khi tải danh sách
+      console.log('Setting currentSession to latest:', latestSession);
       setCurrentSession(latestSession);
-    } else if (res.data.length === 0 && !hasCreatedInitialSession.current) {
+    } else if (!hasCreatedInitialSession.current) {
       hasCreatedInitialSession.current = true;
       createNewSession();
     }
@@ -51,6 +53,7 @@ const fetchSessions = async () => {
     try {
       const title = `Chat ${new Date().toLocaleString()}`;
       const res = await createSession({ student_id: studentId, title }, token);
+      console.log('Created new session:', res.data);
       setSessions((prev) => [
         { id: res.data.id, title, created_at: new Date().toISOString() },
         ...prev,
@@ -113,7 +116,10 @@ const fetchSessions = async () => {
                     <div
                       key={s.id}
                       className={`session-item ${currentSession === s.id ? 'active' : ''}`}
-                      onClick={() => setCurrentSession(s.id)}
+                      onClick={() => {
+                        console.log('Clicked session:', s.id); // Debug
+                        setCurrentSession(s.id);
+                      }}
                     >
                       <span>{s.title}</span>
                     </div>

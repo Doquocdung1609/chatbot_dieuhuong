@@ -152,59 +152,13 @@ export default App;
 
 function TeacherChatWrapper({ userId, token, aiEnabled, currentSession, setCurrentSession, handleLogout }) {
   const { studentId } = useParams();
-  const location = useLocation();
-  const [sessionId, setSessionId] = useState(null);
-
-  useEffect(() => {
-    const fetchLatestSession = async () => {
-      try {
-        const sessionsRes = await getSessions(studentId, token);
-        const sessions = sessionsRes.data;
-        let sessionIdToUse = null;
-
-        if (sessions.length > 0) {
-          // Tìm session mới nhất
-          sessionIdToUse = sessions[0].id;
-          let latestMessageTime = null;
-          for (const session of sessions) {
-            const conversationsRes = await getConversations(session.id, token);
-            const messages = conversationsRes.data;
-            if (messages.length > 0) {
-              const latestMessage = messages[messages.length - 1];
-              if (!latestMessageTime || latestMessage.timestamp > latestMessageTime) {
-                latestMessageTime = latestMessage.timestamp;
-                sessionIdToUse = session.id;
-              }
-            }
-          }
-        } else {
-          // Tạo session mới nếu không có session
-          const newSessionRes = await createSession(
-            { student_id: studentId, title: `Chat ${new Date().toISOString()}` },
-            token
-          );
-          sessionIdToUse = newSessionRes.data.id;
-        }
-
-        setSessionId(sessionIdToUse);
-        setCurrentSession(sessionIdToUse);
-      } catch (err) {
-        console.error('Fetch sessions error:', err);
-        if (err.response?.status === 401) navigate('/login');
-      }
-    };
-
-    if (studentId && token) {
-      fetchLatestSession();
-    }
-  }, [studentId, token, setCurrentSession]);
 
   return (
     <div className="flex w-full">
       <Sidebar
         studentId={studentId}
         token={token}
-        currentSession={sessionId}
+        currentSession={currentSession}
         setCurrentSession={setCurrentSession}
         handleLogout={handleLogout}
         isTeacher={true}
@@ -216,11 +170,10 @@ function TeacherChatWrapper({ userId, token, aiEnabled, currentSession, setCurre
           studentId={studentId}
           token={token}
           aiEnabled={aiEnabled}
-          currentSession={sessionId}
+          currentSession={currentSession}
           setCurrentSession={setCurrentSession}
         />
       </div>
     </div>
   );
 }
-
