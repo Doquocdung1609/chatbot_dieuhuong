@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 import psycopg2
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -156,6 +157,7 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
+    to_encode.update({"jti": str(uuid.uuid4())})  # Add this line
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt, expire.isoformat()
 
@@ -217,6 +219,9 @@ async def student_login(student: StudentLogin):
     if result:
         user_id = result[0]
         token, expires_at = create_access_token({"sub": str(user_id), "type": "student"})
+        # Add this: Delete old tokens for this user
+        cursor.execute("DELETE FROM tokens WHERE user_id = %s AND user_type = %s",
+                        (user_id, "student"))
         cursor.execute("INSERT INTO tokens (user_id, user_type, token, expires_at) VALUES (%s, %s, %s, %s)",
                         (user_id, "student", token, expires_at))
         conn.commit()

@@ -5,3 +5,4 @@ groq
 python-jose
 python-dotenv
 websockets
+uuid
